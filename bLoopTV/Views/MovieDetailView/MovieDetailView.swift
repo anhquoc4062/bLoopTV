@@ -81,20 +81,28 @@ struct MovieDetailView: View {
     private var thumbnailView: some View {
         let thumbWidth = screenWidth * 0.90
 
-        WebImage(url: viewModel.thumbnailURL, options: [.scaleDownLargeImages]) { image in
+        ZStack(alignment: .trailing) {
+            // Layer baseline (poster/art từ metadata) — hiện ngay, không bao giờ bị xoá.
+            thumbLayer(url: viewModel.thumbnailURL, width: thumbWidth)
+
+            // Layer discover — fade-in đè lên baseline khi ảnh "background" về (nếu có).
+            if viewModel.discoverThumbnailURL != nil {
+                thumbLayer(url: viewModel.discoverThumbnailURL, width: thumbWidth)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: 880, alignment: .trailing)
+    }
+
+    private func thumbLayer(url: URL?, width: CGFloat) -> some View {
+        FadeInWebImage(url: url) { image in
             image
                 .resizable()
                 .scaledToFill()
-                .frame(width: thumbWidth, height: 880)
+                .frame(width: width, height: 880)
                 .clipped()
                 .mask(thumbnailMask)
-        } placeholder: {
-            Color.clear
-                .frame(width: thumbWidth, height: 880)
         }
-        .cancelOnDisappear(true)
-        .frame(maxWidth: .infinity, maxHeight: 880, alignment: .trailing)
-        .transition(.fade(duration: 0.6))
+        .frame(width: width, height: 880)
     }
 
     private var thumbnailMask: some View {
@@ -129,16 +137,17 @@ struct MovieDetailView: View {
 
     @ViewBuilder
     private var logoView: some View {
-        WebImage(url: viewModel.logoURL, options: [.scaleDownLargeImages]) { image in
-            image
-                .resizable()
-                .scaledToFit()
-                .frame(maxWidth: 300, maxHeight: 150)
-        } placeholder: {
+        if viewModel.logoURL != nil {
+            FadeInWebImage(url: viewModel.logoURL) { image in
+                image
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: 300, maxHeight: 150)
+            }
+            .frame(maxWidth: 300, maxHeight: 150)
+        } else {
             Color.clear.frame(height: 110)
         }
-        .cancelOnDisappear(true)
-        .transition(.fade(duration: 0.5))
     }
 
     // MARK: - Title
@@ -519,11 +528,11 @@ struct MovieDetailView: View {
 
         print("[Discover] nhận \(images.count) ảnh: \(images.map { $0.type })")
 
+        // Set vào layer discover riêng (không đụng thumbnailURL baseline) → baseline vẫn hiện liên tục,
+        // ảnh discover fade-in đè lên trên, không có khoảng trống trắng gây "chớp".
         if let bg = images.first(where: { $0.type == "background" }) {
-            viewModel.thumbnailURL = URL(string: bg.url)
+            viewModel.discoverThumbnailURL = URL(string: bg.url)
         }
-        // Không có "background" thì GIỮ NGUYÊN baseline đã set từ trước (không ghi đè bằng localThumbnailURL
-        // có thể nil → xoá mất ảnh baseline đang hiện).
 
         if let logo = images.first(where: { $0.type == "clearLogo" }) {
             viewModel.logoURL = URL(string: logo.url)
@@ -551,5 +560,29 @@ struct MovieDetailView: View {
     // replaceTitle overload nhận title label (giữ tương thích)
     private func replaceTitle(title: String) -> String {
         replaceTitle(title)
+    }
+}
+
+/// WebImage tự fade-in mượt đúng lúc ảnh giải mã xong (onSuccess) thay vì pop/nháy. Reset khi url đổi để
+/// lần load mới cũng fade lại từ đầu. Dùng cho logo/thumbnail ở màn detail (ảnh Discover về trễ).
+private struct FadeInWebImage<Content: View>: View {
+    let url: URL?
+    var options: SDWebImageOptions = [.scaleDownLargeImages]
+    @ViewBuilder let content: (Image) -> Content
+
+    @State private var visible = false
+
+    var body: some View {
+        WebImage(url: url, options: options) { image in
+            content(image)
+        } placeholder: {
+            Color.clear
+        }
+        .onSuccess { _, _, _ in
+            withAnimation(.easeIn(duration: 0.5)) { visible = true }
+        }
+        .cancelOnDisappear(true)
+        .opacity(visible ? 1 : 0)
+        .onChange(of: url) { _ in visible = false }
     }
 }

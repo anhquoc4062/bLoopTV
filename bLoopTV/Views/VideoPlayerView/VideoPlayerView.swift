@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SDWebImageSwiftUI
 
 enum ControlFocus {
     case slider
@@ -62,6 +63,10 @@ struct VideoPlayerView: View {
     @State private var isScrubbing = false
     @State private var scrubPosition: Double = 0
 
+    // Che player bằng thumbnail + spinner khi đang load video MỚI (khung mpv lúc này còn đen/rác) — ẩn đi
+    // khi video bắt đầu phát thật. Resume (cùng video còn buffer) thì không cần che vì frame có sẵn ngay.
+    @State private var showCover = true
+
     // Stremio không biết trước duration (playbackData.duration = 0 lần đầu xem) — lấy trực tiếp từ mpv
     // khi phát để seekbar không bị đứng ở 0. Với Plex đã có duration sẵn nên giá trị này không cần override.
     @State private var liveDurationMs: Int?
@@ -81,8 +86,12 @@ struct VideoPlayerView: View {
                     switch propertyName {
                     case MPVProperty.playing:
                         startSeekTimer()
+                        hideCover()
                     case MPVProperty.pausedForCache:
-                        loading = propertyData as? Bool ?? false
+                        let buffering = propertyData as? Bool ?? false
+                        loading = buffering
+                        // Hết buffering lần đầu = frame đã sẵn sàng hiển thị → bỏ lớp che.
+                        if !buffering { hideCover() }
                     case MPVProperty.timePos:
                         if !isSeeking {
                             position = propertyData as? Double ?? 0
@@ -296,6 +305,32 @@ struct VideoPlayerView: View {
             .onExitCommand {
                 triggerExitComand()
             }
+
+            // MARK: - Loading Cover (player dưới cùng → thumbnail giữa → spinner trên cùng)
+            if showCover {
+                ZStack {
+                    Color.black
+
+                    WebImage(url: URL(string: playbackData.thumbnailUrl)) { image in
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    } placeholder: {
+                        Color.black
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .clipped()
+
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                        .scaleEffect(1.6)
+                        .tint(.white)
+                }
+                .ignoresSafeArea()
+                .transition(.opacity)
+                .zIndex(3)
+                .allowsHitTesting(false)
+            }
         }
         .onAppear {
             isPanelFocused = true
@@ -306,6 +341,7 @@ struct VideoPlayerView: View {
                 switch state {
                 case "playing":
                     startSeekTimer()
+                    hideCover()
                 default:
                     break
                 }
@@ -324,6 +360,9 @@ struct VideoPlayerView: View {
 
             // Cùng video còn buffer → resume ngay, không load lại. Video mới/lần đầu → init đầy đủ.
             let resumed = coordinator.player?.loadOrResume(playbackData: playbackData) ?? false
+
+            // Resume: frame có sẵn → không che. Load mới: che bằng thumbnail cho tới khi phát thật.
+            showCover = !resumed
 
             if resumed {
                 // Khôi phục lại state UI từ controller (view là instance mới nên state đã reset về mặc định).
@@ -430,6 +469,11 @@ struct VideoPlayerView: View {
         position = newPos
         coordinator.player?.command("seek", args: ["\(seconds)", "relative"])
         showTemporarily()
+    }
+
+    private func hideCover() {
+        guard showCover else { return }
+        withAnimation(.easeOut(duration: 0.4)) { showCover = false }
     }
 
     func showTemporarily() {
