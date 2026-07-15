@@ -11,7 +11,7 @@ import SwiftUI
 struct bLoopTVApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            RootView().applyAppBackground()
         }
     }
 }
