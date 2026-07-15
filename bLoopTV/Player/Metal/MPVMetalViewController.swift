@@ -869,11 +869,14 @@ final class MPVMetalViewController: UIViewController {
         }
         
         self.videoUrl = URL(string: playbackData.videoUrl)
-        
+
         if let url = videoUrl {
             loadFile(url)
+            // Controller dùng chung giữ nguyên cờ pause từ lần thoát trước (pausePlayer() set pause=true để
+            // giữ buffer). Nạp video MỚI thì phải bỏ pause, nếu không video load xong sẽ đứng im không phát.
+            play()
         }
-        
+
         initSubtitleSettings()
     }
     

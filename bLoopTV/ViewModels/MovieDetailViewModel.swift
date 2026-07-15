@@ -31,6 +31,9 @@ struct MetadataSelected: Identifiable {
 class MovieDetailViewModel: ObservableObject {
     @Published var thumbnailURL: URL?
     @Published var localThumbnailURL: URL?
+    /// Ảnh "background" đẹp từ Discover — render thành layer riêng ĐÈ lên thumbnailURL baseline (không ghi
+    /// đè baseline) để khi Discover về thì ảnh fade-in mượt thay vì baseline biến mất rồi ảnh mới nháy vào.
+    @Published var discoverThumbnailURL: URL?
     @Published var logoURL: URL?
     @Published var metaDataDetail: PlexMetaDataDetail?
     @Published var isWatched: Bool = false
