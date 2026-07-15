@@ -81,16 +81,10 @@ struct MovieDetailView: View {
     private var thumbnailView: some View {
         let thumbWidth = screenWidth * 0.90
 
-        ZStack(alignment: .trailing) {
-            // Layer baseline (poster/art từ metadata) — hiện ngay, không bao giờ bị xoá.
-            thumbLayer(url: viewModel.thumbnailURL, width: thumbWidth)
-
-            // Layer discover — fade-in đè lên baseline khi ảnh "background" về (nếu có).
-            if viewModel.discoverThumbnailURL != nil {
-                thumbLayer(url: viewModel.discoverThumbnailURL, width: thumbWidth)
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: 880, alignment: .trailing)
+        // Chỉ hiện ảnh "background" từ Discover (fade-in khi về). Không dùng poster local làm placeholder —
+        // trống cho tới khi Discover trả ảnh.
+        thumbLayer(url: viewModel.discoverThumbnailURL, width: thumbWidth)
+            .frame(maxWidth: .infinity, maxHeight: 880, alignment: .trailing)
     }
 
     private func thumbLayer(url: URL?, width: CGFloat) -> some View {
@@ -397,17 +391,8 @@ struct MovieDetailView: View {
             blurColors.bottomRight = colors.bottomRight
         }
 
-        // Baseline ngay lập tức từ chính metadata đã có sẵn (poster/art) — trước đây thumbnailURL/logoURL
-        // CHỈ được gán bên trong renderDiscoverImage (chạy sau khi fetch API Discover bên ngoài thành công).
-        // Discover là dịch vụ Plex tách biệt, dễ fail âm thầm (guid dạng cũ, thiếu plexToken, không có
-        // field "images"...) — lúc đó thumbnailURL/logoURL không bao giờ được gán, hero luôn trống trơn dù
-        // không có lỗi/crash gì. Set baseline trước để luôn có gì đó hiện ra ngay, Discover fetch xong thì
-        // ghi đè bằng ảnh đẹp hơn (nếu có).
-        viewModel.thumbnailURL = PlexAPI.shared.getPosterTranscodeURL(
-            url: metadata.thumbnail ?? metadata.poster,
-            width: 1280,
-            height: 800
-        )
+        // Hero chỉ hiện ảnh "background" từ Discover (không dùng poster local làm placeholder).
+        // localThumbnailURL vẫn cần cho lớp che (cover) của player khi bấm phát.
         viewModel.fetchThumbnail(url: metadata.thumbnail)
 
         // Fetch discover image nếu cần (có thể ghi đè baseline ở trên bằng ảnh "background"/logo đẹp hơn).
