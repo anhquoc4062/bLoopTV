@@ -2,30 +2,13 @@ import Foundation
 import SwiftUI
 import Combine
 
-/// Giữ DUY NHẤT 1 instance MPVMetalViewController (và 1 mpv context) sống suốt vòng đời app.
-/// Nhờ vậy khi thoát khỏi VideoPlayerView (pop) rồi vào lại, buffer/cache của mpv còn nguyên → xem tiếp
-/// ngay không phải load lại. Vì chỉ có đúng 1 controller (PlayerHost giữ strong reference), SwiftUI dismantle
-/// representable KHÔNG deallocate controller, và setupMpv() có guard mpv==nil nên không bao giờ tạo 2 context
-/// (tránh leak/tràn memory). Cache bị chặn bởi giới hạn mặc định của mpv (demuxer-max-bytes...).
-@MainActor
-final class PlayerHost {
-    static let shared = PlayerHost()
-    let controller = MPVMetalViewController()
-    let coordinator = MPVMetalPlayerView.Coordinator()
-
-    private init() {
-        controller.playDelegate = coordinator
-        coordinator.player = controller
-    }
-}
-
 struct MPVMetalPlayerView: UIViewControllerRepresentable {
     @ObservedObject var coordinator: Coordinator
 
     func makeUIViewController(context: Context) -> some UIViewController {
-        // Tái sử dụng controller dùng chung thay vì tạo mới → giữ mpv context + buffer sống qua các lần
-        // present/dismiss của player view.
-        let mpv = PlayerHost.shared.controller
+        // Mỗi lần vào player tạo controller + mpv context RIÊNG (không share). Chia sẻ nguyên UIViewController
+        // qua các lần push/pop của NavigationStack gây reparent loạn view Metal → video chồng nhau + lag.
+        let mpv = MPVMetalViewController()
         mpv.playDelegate = coordinator
         mpv.playUrl = coordinator.playUrl
 
@@ -37,8 +20,10 @@ struct MPVMetalPlayerView: UIViewControllerRepresentable {
     func updateUIViewController(_ uiViewController: UIViewControllerType, context: Context) {
     }
 
-    // KHÔNG destroy controller ở đây — PlayerHost giữ nó sống để lần sau vào lại còn buffer sẵn.
+    // Giải phóng hẳn mpv context khi SwiftUI tháo representable (pop khỏi player). destroy() có guard chống
+    // gọi 2 lần nên an toàn dù onDisappear cũng gọi destroyPlayer().
     static func dismantleUIViewController(_ uiViewController: UIViewControllerType, coordinator: Coordinator) {
+        (uiViewController as? MPVMetalViewController)?.destroy()
     }
 
     public func makeCoordinator() -> Coordinator {
