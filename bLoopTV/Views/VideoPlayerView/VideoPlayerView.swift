@@ -36,8 +36,9 @@ struct VideoPlayerView: View {
     let playbackData: PlaybackData
     var onDismiss: (() -> Void)?
 
-    // Dùng chung 1 coordinator/controller toàn app (PlayerHost) để buffer sống qua các lần vào/ra player.
-    @ObservedObject var coordinator = PlayerHost.shared.coordinator
+    // Mỗi lần vào player 1 coordinator + controller + mpv context riêng, destroy khi thoát (ổn định, không
+    // bị video chồng nhau/lag khi chuyển qua lại nhiều video).
+    @ObservedObject var coordinator = MPVMetalPlayerView.Coordinator()
     @FocusState private var isPanelFocused: Bool
     @FocusState private var focusedElement: SeekBarView.FocusField?
     
@@ -405,13 +406,13 @@ struct VideoPlayerView: View {
             progressTimer?.invalidate()
             progressTimer = nil
 
-            // KHÔNG destroy — chỉ tạm dừng để giữ buffer/cache, vào lại xem tiếp ngay không phải load lại.
-            coordinator.pausePlayer()
-
-            // Gỡ closure trỏ về view này để controller dùng chung không giữ/gọi lại state của view đã biến mất.
+            // Gỡ closure trước khi destroy để không gọi lại state của view đã biến mất.
             coordinator.player?.onPlaybackStateChange = nil
             coordinator.player?.onTracksDiscovered = nil
             coordinator.onPropertyChange = nil
+
+            // Giải phóng hẳn mpv context (guard chống double-destroy với dismantleUIViewController).
+            coordinator.destroyPlayer()
         }
         .overlay {
             if showMediaSettings {

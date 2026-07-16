@@ -457,8 +457,13 @@ final class MPVMetalViewController: UIViewController {
         }
     }
     
+    private var isDestroying = false
+
     func destroy() {
-        guard mpv != nil else { return }
+        // Chống gọi 2 lần (onDisappear + dismantleUIViewController) trước khi mpv_terminate_destroy async
+        // chạy xong — nếu không sẽ schedule 2 lần terminate trên cùng con trỏ → double free / crash.
+        guard mpv != nil, !isDestroying else { return }
+        isDestroying = true
 
         loadedVideoUrl = nil
 
