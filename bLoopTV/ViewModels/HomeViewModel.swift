@@ -249,8 +249,11 @@ class HomeViewModel: ObservableObject {
                 let deepLinkId = isEpisode ? (metadata.grandParentId ?? metadata.id) : metadata.id
                 let deepLinkType = isEpisode ? "show" : metadata.type
 
-                // Series/episode dùng "thumbnail" (art), phim lẻ dùng "poster" như cũ.
-                let imageSource = isEpisode ? (metadata.thumbnail ?? metadata.poster) : metadata.poster
+                // Tập phim dùng poster của series (grandparentThumb) cho khớp dạng poster của Top Shelf;
+                // thiếu thì lùi về art/poster của tập. Phim lẻ dùng "poster" như cũ.
+                let imageSource = isEpisode
+                    ? (metadata.grandparentThumb ?? metadata.thumbnail ?? metadata.poster)
+                    : metadata.poster
                 let posterURL = PlexAPI.shared.getPosterTranscodeURL(url: imageSource ?? "", width: 480, height: 720)
                 let title = isEpisode ? (metadata.grandParentTitle ?? metadata.title) : metadata.title
 
