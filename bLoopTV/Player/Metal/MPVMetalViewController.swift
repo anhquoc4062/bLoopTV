@@ -53,6 +53,11 @@ final class MPVMetalViewController: UIViewController {
     /// từ cache) hay video khác (load lại). nil = chưa nạp gì.
     private(set) var loadedVideoUrl: String?
 
+    /// Thời lượng thật gần nhất đọc được từ mpv (ms). Khi phim chạy hết/mpv unload file thì property
+    /// "duration" trả 0 — với Stremio (không biết trước thời lượng, self.duration = 0) sẽ mất luôn mẫu số
+    /// để tính % đã xem. Giữ lại giá trị cuối cùng để lần cập nhật tiến độ cuối vẫn tính đúng.
+    private var lastKnownDurationMs: Int = 0
+
     private var isInitLoad: Bool = true
     private var isInitSetSubtitle: Bool = true
     internal var isPlaying = true
@@ -435,6 +440,13 @@ final class MPVMetalViewController: UIViewController {
                 case MPV_EVENT_END_FILE:
                     let endFile = UnsafeMutablePointer<mpv_event_end_file>(OpaquePointer(event!.pointee.data))
                     if let raw = endFile?.pointee.reason, raw.rawValue == 0 {
+                        // Chạy hết phim (EOF) = đã xem xong, khỏi cần tính % — lúc này mpv đã unload file
+                        // nên "duration" về 0, không tính tỉ lệ được nữa.
+                        if let context = self.stremioContext {
+                            print("[Stremio] hết phim \(context.videoId) → đánh dấu đã xem")
+                            StremioWatchedService.shared.markWatched(context.videoId)
+                        }
+
                         if let currentIndex = currentIndexVideo {
                             Task {
                                 await self.reloadVideoWithNewIndex(index: currentIndex + 1)
@@ -775,11 +787,20 @@ final class MPVMetalViewController: UIViewController {
         if let context = stremioContext {
             let timeOffsetMs = self.viewOffset ?? 0
             let liveDurationMs = Int(getDuration() * 1000)
-            let durationMs = liveDurationMs > 0 ? liveDurationMs : (self.duration ?? 0)
+            if liveDurationMs > 0 {
+                lastKnownDurationMs = liveDurationMs
+            }
+            // Ưu tiên duration còn đọc được từ mpv; hết phim/unload thì dùng giá trị cuối cùng đã biết;
+            // cuối cùng mới tới duration truyền vào (Stremio lần đầu xem là 0).
+            let durationMs = liveDurationMs > 0
+                ? liveDurationMs
+                : (lastKnownDurationMs > 0 ? lastKnownDurationMs : (self.duration ?? 0))
 
             // Xem quá mốc 95% thì đánh dấu tập đã xem xong. Đặt trước guard authKey vì đây là dữ liệu lưu
             // local, không phụ thuộc việc còn đăng nhập account Stremio hay không.
-            if StremioWatchedService.reachedWatchedThreshold(timeOffsetMs: timeOffsetMs, durationMs: durationMs) {
+            let reached = StremioWatchedService.reachedWatchedThreshold(timeOffsetMs: timeOffsetMs, durationMs: durationMs)
+            print("[Stremio] tiến độ \(context.videoId): \(timeOffsetMs)/\(durationMs)ms, watched=\(reached)")
+            if reached {
                 StremioWatchedService.shared.markWatched(context.videoId)
             }
 
