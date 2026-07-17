@@ -13,6 +13,9 @@ struct PlexMetaData: Identifiable, Codable, Hashable {
     let grandParentId: String?
     let title: String
     let grandParentTitle: String?
+    /// Poster của series (grandparent) cho tập phim — Plex trả ở key "grandparentThumb". Dùng cho Top Shelf
+    /// để tập phim hiện poster series (dạng poster) thay vì ảnh still ngang của tập.
+    let grandparentThumb: String?
     let type: String
     let poster: String?
     let thumbnail: String?
@@ -52,6 +55,7 @@ struct PlexMetaData: Identifiable, Codable, Hashable {
         case grandParentId = "grandparentRatingKey"
         case title = "title"
         case grandParentTitle = "grandparentTitle"
+        case grandparentThumb = "grandparentThumb"
         case type = "type"
         case poster = "thumb"
         case thumbnail = "art"
@@ -85,6 +89,7 @@ struct PlexMetaData: Identifiable, Codable, Hashable {
         grandParentId: String,
         title: String,
         grandParentTitle: String,
+        grandparentThumb: String? = nil,
         type: String,
         poster: String,
         thumbnail: String,
@@ -115,6 +120,7 @@ struct PlexMetaData: Identifiable, Codable, Hashable {
         self.grandParentId = grandParentId
         self.title = title
         self.grandParentTitle = grandParentTitle
+        self.grandparentThumb = grandparentThumb
         self.type = type
         self.poster = poster
         self.thumbnail = thumbnail
@@ -155,7 +161,9 @@ struct PlexMetaData: Identifiable, Codable, Hashable {
         } else {
             self.grandParentTitle = nil
         }
-        
+
+        self.grandparentThumb = try? container.decode(String.self, forKey: .grandparentThumb)
+
         self.type = try container.decode(String.self, forKey: .type)
         
         let decodedImageSources = try? container.decode(ImageSources.self, forKey: .imageSources)
