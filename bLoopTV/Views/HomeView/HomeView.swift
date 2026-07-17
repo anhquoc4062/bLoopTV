@@ -109,7 +109,7 @@ struct HomeView: View {
 
     // MARK: - Component: Top Navigation Bar
     private var topNavigationBar: some View {
-        HStack(spacing: 30) {
+        HomeTopBar {
             // Nút Tìm Kiếm
             Button(action: { navPathManager.push(.searchPage) }) {
                 HStack(spacing: 12) {
@@ -123,23 +123,7 @@ struct HomeView: View {
 
             // Menu chọn Server
             ServerSwitcherMenu(onPlexServerReselected: resetAndRefresh)
-
-            Spacer()
         }
-        .padding(.horizontal, 80)
-        .padding(.top, 60)
-        .edgesIgnoringSafeArea(.all)
-        .background(
-            // Gradient mờ ở đỉnh để làm nổi bật nút nếu ảnh Banner quá sáng
-            LinearGradient(
-                colors: [Color.black.opacity(0.5), .clear],
-                startPoint: .top,
-                endPoint: .bottom
-            ).frame(maxWidth: .infinity)
-            .frame(height: 200)
-            .edgesIgnoringSafeArea(.horizontal)
-            .allowsHitTesting(false)
-        )
     }
 
     // MARK: - Helper Methods

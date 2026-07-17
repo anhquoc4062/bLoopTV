@@ -9,6 +9,19 @@ private struct StremioSearchRow: Identifiable {
     let id: String
     let title: String
     let items: [StremioMeta]
+    /// Chuyển sẵn 1 lần lúc dựng hàng để dùng chung SectionView/MovieCardView với bên Plex.
+    let metadatas: [PlexMetaData]
+
+    init(id: String, title: String, items: [StremioMeta]) {
+        self.id = id
+        self.title = title
+        self.items = items
+        self.metadatas = items.map { $0.asPlexMetaData }
+    }
+
+    func item(forMetadataId id: String) -> StremioMeta? {
+        items.first { $0.id == id }
+    }
 }
 
 struct StremioSearchView: View {
@@ -38,9 +51,20 @@ struct StremioSearchView: View {
                         .foregroundColor(.red)
                 } else {
                     ForEach(rows) { row in
-                        StremioSectionView(sectionTitle: row.title, items: row.items) { item in
-                            navPathManager.push(.stremioMovieDetail(item: item, addonBaseURLs: addonBaseURLs))
-                        }
+                        SectionView(
+                            sectionTitle: row.title,
+                            hubKey: row.id,
+                            metadatas: row.metadatas,
+                            isLandscapeSection: false,
+                            isDiscover: false,
+                            onSelectItem: { metadata in
+                                guard let item = row.item(forMetadataId: metadata.id) else { return }
+                                navPathManager.push(.stremioMovieDetail(item: item, addonBaseURLs: addonBaseURLs))
+                            },
+                            subtitleProvider: { metadata in
+                                row.item(forMetadataId: metadata.id)?.cardSubtitle
+                            }
+                        )
                         .focusSection()
                     }
                 }

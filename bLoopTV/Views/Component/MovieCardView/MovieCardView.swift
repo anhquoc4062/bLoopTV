@@ -13,6 +13,12 @@ struct MovieCardView: View {
     let metadata: PlexMetaData
     let isLandscape: Bool
     let isContinueWatching: Bool
+    /// Hành động khi bấm thẻ. nil = mặc định mở trang detail Plex. Nguồn khác (vd Stremio) truyền action
+    /// riêng để điều hướng sang trang detail của nó.
+    var onSelect: (() -> Void)? = nil
+    /// Thay dòng phụ dưới tên. nil = tự suy ra từ dữ liệu Plex (mùa/tập/năm). Nguồn khác không có các
+    /// field đó nên truyền nhãn riêng.
+    var subtitleOverride: String? = nil
     let itemWidth: CGFloat = 250
     let itemHeight: CGFloat = 380
     
@@ -28,12 +34,16 @@ struct MovieCardView: View {
     var body: some View {
         VStack {
             Button(action: {
-                navManager.push(
-                    .movieDetail(
-                        metadata: metadata,
-                        isDiscover: false
+                if let onSelect {
+                    onSelect()
+                } else {
+                    navManager.push(
+                        .movieDetail(
+                            metadata: metadata,
+                            isDiscover: false
+                        )
                     )
-                )
+                }
             }) {
                 VStack(alignment: .leading, spacing: 0) {
                     ZStack(alignment: .topLeading) {
@@ -92,7 +102,7 @@ struct MovieCardView: View {
                 .bold()
                 .foregroundColor(.white)
                 
-                Text(getSubtitle())
+                Text(subtitleOverride ?? getSubtitle())
                     .font(.caption2)
                     .foregroundColor(Color(hex: "#a0aab1"))
                     .lineLimit(1)
@@ -106,6 +116,13 @@ struct MovieCardView: View {
     }
     
     private func fetchPoster(urlString: String) {
+        // Ảnh từ nguồn ngoài (vd addon Stremio) đã là URL tuyệt đối — dùng thẳng, không ký/transcode qua
+        // server Plex (sẽ ra URL sai vì Plex không giữ ảnh đó).
+        if urlString.hasPrefix("http://") || urlString.hasPrefix("https://") {
+            posterURL = URL(string: urlString)
+            return
+        }
+
         if let plexURL = PlexAPI.shared.getPosterTranscodeURL(
             url: urlString,
             width: isLandscape ? 647 : 432,

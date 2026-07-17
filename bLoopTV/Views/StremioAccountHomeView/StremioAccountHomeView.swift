@@ -9,6 +9,21 @@ private struct StremioAccountCatalogRow: Identifiable {
     let id: String
     let title: String
     let items: [StremioMeta]
+    /// Chuyển sẵn sang PlexMetaData lúc dựng hàng (không convert lại mỗi lần render) để dùng chung
+    /// SectionView/MovieCardView với bên Plex.
+    let metadatas: [PlexMetaData]
+
+    init(id: String, title: String, items: [StremioMeta]) {
+        self.id = id
+        self.title = title
+        self.items = items
+        self.metadatas = items.map { $0.asPlexMetaData }
+    }
+
+    /// Tìm ngược item Stremio gốc từ thẻ được bấm (PlexMetaData.id giữ nguyên id Stremio).
+    func item(forMetadataId id: String) -> StremioMeta? {
+        items.first { $0.id == id }
+    }
 }
 
 struct StremioAccountHomeView: View {
@@ -45,9 +60,20 @@ struct StremioAccountHomeView: View {
                 }
 
                 ForEach(rows) { row in
-                    StremioSectionView(sectionTitle: row.title, items: row.items) { item in
-                        navPathManager.push(.stremioMovieDetail(item: item, addonBaseURLs: allAddonBaseURLs))
-                    }
+                    SectionView(
+                        sectionTitle: row.title,
+                        hubKey: row.id,
+                        metadatas: row.metadatas,
+                        isLandscapeSection: false,
+                        isDiscover: false,
+                        onSelectItem: { metadata in
+                            guard let item = row.item(forMetadataId: metadata.id) else { return }
+                            navPathManager.push(.stremioMovieDetail(item: item, addonBaseURLs: allAddonBaseURLs))
+                        },
+                        subtitleProvider: { metadata in
+                            row.item(forMetadataId: metadata.id)?.cardSubtitle
+                        }
+                    )
                     .focusSection()
                 }
             }
@@ -58,20 +84,21 @@ struct StremioAccountHomeView: View {
 
     // MARK: - Top bar riêng của "Home" Stremio, avatar = tài khoản Stremio đang đăng nhập
     private var topBar: some View {
-        HStack(spacing: 30) {
+        HomeTopBar {
             ServerSwitcherMenu()
 
             Button {
                 navPathManager.push(.stremioSearch(addons: addons))
             } label: {
-                Image(systemName: "magnifyingglass")
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 12)
+                HStack(spacing: 12) {
+                    Image(systemName: "magnifyingglass")
+                    Text("Tìm kiếm")
+                }
+                .padding(.horizontal, 25)
+                .padding(.vertical, 12)
             }
             .buttonStyle(.card)
-
-            Spacer()
-
+        } trailing: {
             Menu {
                 Button("Đăng xuất") {
                     StremioAccountAPI.shared.logout()
@@ -92,8 +119,6 @@ struct StremioAccountHomeView: View {
             .menuStyle(.button)
             .buttonStyle(.card)
         }
-        .padding(.top, 60)
-        .padding(.bottom, 10)
     }
 
     private func loadHome() {
