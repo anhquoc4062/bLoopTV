@@ -16,13 +16,16 @@ enum StremioPlaybackConverter {
     ///   - knownDurationMs: tổng thời lượng đã biết trước đó (ms) từ library, mặc định 0 (mpv sẽ tự cập nhật khi phát).
     ///   - libraryItemId: id item trong library account (nil = không lưu tiến độ, dùng cho chế độ nhập URL thủ công không đăng nhập).
     ///   - existing: item library cũ (nếu có) để giữ nguyên field housekeeping khi ghi lại tiến độ mới.
+    /// - coverImageUrl: ảnh ngang (background/episode thumbnail ở màn detail) dùng cho lớp che khi load —
+    ///   đẹp hơn poster dọc bị kéo giãn. nil thì lùi về poster.
     static func buildPlaybackData(
         item: StremioMeta,
         stream: StremioStream,
         resumeOffsetMs: Int = 0,
         knownDurationMs: Int = 0,
         libraryItemId: String? = nil,
-        existing: StremioLibraryItem? = nil
+        existing: StremioLibraryItem? = nil,
+        coverImageUrl: String? = nil
     ) -> PlaybackData? {
         guard let videoUrlString = stream.url else { return nil }
 
@@ -95,7 +98,7 @@ enum StremioPlaybackConverter {
             videoID: stableVideoId(item.id),
             grandVideoID: 0,
             ratingKey: item.id,
-            thumbnailUrl: item.poster ?? "",
+            thumbnailUrl: coverImageUrl ?? item.poster ?? "",
             mediaPartStreams: mediaStreams,
             currentIndex: 0,
             playlist: [],

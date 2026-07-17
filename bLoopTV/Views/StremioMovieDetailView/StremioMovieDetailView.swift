@@ -512,13 +512,16 @@ struct StremioMovieDetailView: View {
         let streamForPlayback = StremioStream(url: option.stream.url, title: option.stream.title, name: option.stream.name, subtitles: mergedSubtitles)
 
         let streamItem = StremioMeta(id: resolvedStreamId, type: item.type, name: item.name, poster: item.poster)
+        // Ảnh ngang cho lớp che khi load: ưu tiên still của tập → background phim → cuối cùng mới poster dọc.
+        let coverImage = metaDetail?.background ?? item.poster
         guard let playbackData = StremioPlaybackConverter.buildPlaybackData(
             item: streamItem,
             stream: streamForPlayback,
             resumeOffsetMs: resumeOffsetMs,
             knownDurationMs: knownDurationMs,
             libraryItemId: StremioAccountAPI.shared.authKey != nil ? libraryItemId : nil,
-            existing: existingLibraryItem
+            existing: existingLibraryItem,
+            coverImageUrl: coverImage
         ) else {
             errorMessage = "Nguồn phát không hợp lệ"
             return

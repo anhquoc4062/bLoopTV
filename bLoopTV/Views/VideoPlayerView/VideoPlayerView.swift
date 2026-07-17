@@ -325,10 +325,8 @@ struct VideoPlayerView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .clipped()
 
-                    ProgressView()
-                        .progressViewStyle(.circular)
-                        .scaleEffect(1.6)
-                        .tint(.white)
+                    OrangeSpinner()
+                        .frame(width: 60, height: 60)
                 }
                 .ignoresSafeArea()
                 .transition(.opacity)
@@ -718,6 +716,18 @@ class TVGestureUIView: UIView, UIGestureRecognizerDelegate {
     }
     
     private var blockMenuResponder = false
+}
+
+/// Bọc OrangeSpinnerView (UIKit, vòng xoay màu VArtThemeColor) để dùng trong SwiftUI. Khởi tạo với frame
+/// cố định vì OrangeSpinnerView tính bán kính vòng tròn từ bounds ngay lúc init.
+struct OrangeSpinner: UIViewRepresentable {
+    var size: CGFloat = 60
+
+    func makeUIView(context: Context) -> OrangeSpinnerView {
+        OrangeSpinnerView(frame: CGRect(x: 0, y: 0, width: size, height: size))
+    }
+
+    func updateUIView(_ uiView: OrangeSpinnerView, context: Context) {}
 }
 
 struct TVGestureView: UIViewRepresentable {
