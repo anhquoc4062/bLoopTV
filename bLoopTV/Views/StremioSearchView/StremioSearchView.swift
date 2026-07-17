@@ -6,6 +6,16 @@
 import SwiftUI
 import Combine
 
+private extension Array {
+    /// Chia thành từng nhóm `size` phần tử để tự dựng lưới bằng VStack/HStack.
+    func chunked(into size: Int) -> [[Element]] {
+        guard size > 0 else { return [self] }
+        return stride(from: 0, to: count, by: size).map {
+            Array(self[$0..<Swift.min($0 + size, count)])
+        }
+    }
+}
+
 private struct StremioSearchRow: Identifiable {
     let id: String
     let title: String
@@ -152,7 +162,8 @@ struct StremioSearchView: View {
     @EnvironmentObject var navPathManager: NavigationPathManager
     @StateObject private var viewModel = StremioSearchViewModel()
 
-    private let columns = Array(repeating: GridItem(.flexible(), spacing: 40), count: 5)
+    /// Số thẻ mỗi hàng — giữ bằng SearchView bên Plex cho đồng bộ.
+    private let columnCount = 5
 
     private var addonBaseURLs: [String] {
         addons.map { StremioAccountAPI.baseURL(fromTransportUrl: $0.transportUrl) }
@@ -169,6 +180,35 @@ struct StremioSearchView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .searchable(text: $viewModel.searchText, prompt: "Tìm phim, series bằng AI...")
         .onAppear { viewModel.start(addons: addons) }
+    }
+
+    /// Tự dựng lưới bằng VStack/HStack thay vì LazyVGrid: trên tvOS focus di chuyển tốt BÊN TRONG
+    /// LazyVGrid nhưng rất khó RỜI KHỎI nó xuống dưới — có 2 lưới xếp dọc (Phim Lẻ / Phim Bộ) thì kẹt
+    /// luôn ở lưới đầu, thấy rõ nhất khi Phim Lẻ chỉ có 1 hàng. SearchView bên Plex không dính vì chỉ có
+    /// đúng 1 lưới, không bao giờ cần thoát ra.
+    private func cardGrid(for row: StremioSearchRow) -> some View {
+        VStack(alignment: .leading, spacing: 60) {
+            ForEach(Array(row.metadatas.chunked(into: columnCount).enumerated()), id: \.offset) { _, chunk in
+                HStack(alignment: .top, spacing: 40) {
+                    ForEach(chunk) { metadata in
+                        MovieCardView(
+                            metadata: metadata,
+                            isLandscape: false,
+                            isContinueWatching: false,
+                            onSelect: {
+                                guard let item = row.item(forMetadataId: metadata.id) else { return }
+                                navPathManager.push(.stremioMovieDetail(item: item, addonBaseURLs: addonBaseURLs))
+                            },
+                            subtitleOverride: row.item(forMetadataId: metadata.id)?.cardSubtitle
+                        )
+                    }
+
+                    // Hàng cuối thiếu ô thì đẩy các ô còn lại về trái cho thẳng cột với hàng trên.
+                    Spacer(minLength: 0)
+                }
+            }
+        }
+        .padding(.horizontal, 60)
     }
 
     // MARK: - Trạng thái ban đầu
@@ -212,21 +252,7 @@ struct StremioSearchView: View {
                             .font(.headline)
                             .padding(.horizontal, 60)
 
-                        LazyVGrid(columns: columns, spacing: 60) {
-                            ForEach(row.metadatas) { metadata in
-                                MovieCardView(
-                                    metadata: metadata,
-                                    isLandscape: false,
-                                    isContinueWatching: false,
-                                    onSelect: {
-                                        guard let item = row.item(forMetadataId: metadata.id) else { return }
-                                        navPathManager.push(.stremioMovieDetail(item: item, addonBaseURLs: addonBaseURLs))
-                                    },
-                                    subtitleOverride: row.item(forMetadataId: metadata.id)?.cardSubtitle
-                                )
-                            }
-                        }
-                        .padding(.horizontal, 60)
+                        cardGrid(for: row)
                     }
                     .focusSection()
                 }
