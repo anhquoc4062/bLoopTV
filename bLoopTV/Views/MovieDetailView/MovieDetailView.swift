@@ -79,52 +79,9 @@ struct MovieDetailView: View {
 
     @ViewBuilder
     private var thumbnailView: some View {
-        let thumbWidth = screenWidth * 0.90
-
         // Chỉ hiện ảnh "background" từ Discover (fade-in khi về). Không dùng poster local làm placeholder —
         // trống cho tới khi Discover trả ảnh.
-        thumbLayer(url: viewModel.discoverThumbnailURL, width: thumbWidth)
-            .frame(maxWidth: .infinity, maxHeight: 880, alignment: .trailing)
-    }
-
-    private func thumbLayer(url: URL?, width: CGFloat) -> some View {
-        FadeInWebImage(url: url) { image in
-            image
-                .resizable()
-                .scaledToFill()
-                .frame(width: width, height: 880)
-                .clipped()
-                .mask(thumbnailMask)
-        }
-        .frame(width: width, height: 880)
-    }
-
-    private var thumbnailMask: some View {
-        LinearGradient(
-            gradient: Gradient(stops: [
-                .init(color: .white, location: 0),
-                .init(color: .white, location: 0.1),
-                .init(color: .white, location: 0.3),
-                .init(color: .clear, location: 1.0)
-            ]),
-            startPoint: .top,
-            endPoint: .bottom
-                
-        )
-        .mask(
-            LinearGradient(
-                    stops: [
-                        .init(color: .clear, location: 0.0),          // transparent (từ 0 đến 10px - xấp xỉ 0)
-                        .init(color: .black.opacity(0.2), location: 0.15), // rgba(0,0,0,.2) 15%
-                        .init(color: .black, location: 0.40),         // black 40%
-                        .init(color: .black, location: 0.80),         // black 80%
-                        .init(color: .black, location: 0.99)          // transparent 99%
-                    ],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-        )
-        .compositingGroup()
+        DetailHeroBanner(imageURL: viewModel.discoverThumbnailURL, screenWidth: screenWidth)
     }
 
     // MARK: - Logo
@@ -545,51 +502,5 @@ struct MovieDetailView: View {
     // replaceTitle overload nhận title label (giữ tương thích)
     private func replaceTitle(title: String) -> String {
         replaceTitle(title)
-    }
-}
-
-/// WebImage tự fade-in mượt đúng lúc ảnh giải mã xong (onSuccess) thay vì pop/nháy. Reset khi url đổi để
-/// lần load mới cũng fade lại từ đầu. Dùng cho logo/thumbnail ở màn detail (ảnh Discover về trễ).
-private struct FadeInWebImage<Content: View>: View {
-    let url: URL?
-    var options: SDWebImageOptions = [.scaleDownLargeImages]
-    @ViewBuilder let content: (Image) -> Content
-
-    @State private var visible = false
-
-    /// Ảnh đã nằm trong cache (memory/disk) — vào lại view thì hiện ngay, không chờ fade.
-    private func isCached(_ url: URL?) -> Bool {
-        guard let url else { return false }
-        let key = SDWebImageManager.shared.cacheKey(for: url)
-        return SDImageCache.shared.imageFromCache(forKey: key) != nil
-    }
-
-    var body: some View {
-        WebImage(url: url, options: options) { image in
-            content(image)
-        } placeholder: {
-            Color.clear
-        }
-        .onSuccess { _, _, cacheType in
-            // Ảnh từ memory cache gọi onSuccess ĐỒNG BỘ ngay trong lúc render — set @State trực tiếp lúc
-            // này sẽ bị SwiftUI bỏ qua khiến ảnh kẹt opacity 0. async ra khỏi vòng render mới ăn state.
-            DispatchQueue.main.async {
-                if visible { return }
-                if cacheType == .none {
-                    withAnimation(.easeIn(duration: 0.5)) { visible = true }
-                } else {
-                    visible = true // đã cache → hiện ngay, khỏi fade
-                }
-            }
-        }
-        .cancelOnDisappear(true)
-        .opacity(visible ? 1 : 0)
-        .onAppear {
-            // Vào lại detail khi ảnh đã cache: hiện ngay, phòng trường hợp onSuccess không tái phát.
-            if isCached(url) { visible = true }
-        }
-        .onChange(of: url) { newURL in
-            visible = isCached(newURL)
-        }
     }
 }

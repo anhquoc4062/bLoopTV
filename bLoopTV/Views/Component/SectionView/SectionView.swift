@@ -14,6 +14,10 @@ struct SectionView: View {
     let metadatas: [PlexMetaData]
     let isLandscapeSection: Bool?
     let isDiscover: Bool?
+    /// nil = thẻ mở trang detail Plex như mặc định. Nguồn khác (Stremio) truyền action điều hướng riêng.
+    var onSelectItem: ((PlexMetaData) -> Void)? = nil
+    /// nil = dòng phụ tự suy ra từ dữ liệu Plex. Nguồn khác truyền nhãn riêng.
+    var subtitleProvider: ((PlexMetaData) -> String?)? = nil
     let itemHeight: CGFloat = 380
     let itemWidth: CGFloat = 250
 
@@ -44,7 +48,13 @@ struct SectionView: View {
                 LazyHStack(spacing: 50) {
                     ForEach(metadatas) { metadata in
                         
-                        MovieCardView(metadata: metadata, isLandscape: isLandscapeSection ?? false, isContinueWatching: hubKey == "continueWatching")
+                        MovieCardView(
+                            metadata: metadata,
+                            isLandscape: isLandscapeSection ?? false,
+                            isContinueWatching: hubKey == "continueWatching",
+                            onSelect: onSelectItem.map { select in { select(metadata) } },
+                            subtitleOverride: subtitleProvider?(metadata)
+                        )
                     }
                 }
                 .padding(.horizontal)
