@@ -76,6 +76,8 @@ struct StremioMovieDetailView: View {
     }
 
     @State private var hasPreparedStreams = false
+    /// Người dùng đã tự bấm chọn tập trong phiên này — khi đó không tự nhảy sang tập kế nữa.
+    @State private var userPickedEpisode = false
 
     var body: some View {
         detailContent
@@ -414,8 +416,54 @@ struct StremioMovieDetailView: View {
             .sorted { ($0.episode ?? 0) < ($1.episode ?? 0) }
     }
 
+    /// Toàn bộ tập theo đúng thứ tự xem: mùa tăng dần, mùa 0 (Đặc biệt) xếp cuối — khớp thứ tự tab mùa.
+    private var orderedEpisodes: [StremioVideoEntry] {
+        (metaDetail?.videos ?? []).sorted { lhs, rhs in
+            let lhsSeason = lhs.season ?? 0
+            let rhsSeason = rhs.season ?? 0
+            if lhsSeason != rhsSeason {
+                if lhsSeason == 0 { return false }
+                if rhsSeason == 0 { return true }
+                return lhsSeason < rhsSeason
+            }
+            return (lhs.episode ?? 0) < (rhs.episode ?? 0)
+        }
+    }
+
+    /// Xem xong tập hiện tại (>=95%) thì nút Phát phải mời tập KẾ chứ không mời xem lại tập cũ — vì
+    /// state library Stremio chỉ nhớ "tập xem gần nhất", quay về detail sẽ luôn trỏ lại đúng tập đó.
+    /// Nhảy liên tiếp qua các tập đã xem để về đúng tập chưa xem đầu tiên (xem liền mấy tập cũng đúng).
+    /// - Returns: true nếu có đổi tập (và đã tự nạp lại nguồn phát cho tập mới).
+    @discardableResult
+    private func advanceToNextUnwatchedEpisode() -> Bool {
+        guard item.type == "series", !resolvedStreamId.isEmpty else { return false }
+        // Người dùng tự bấm chọn tập thì tôn trọng lựa chọn đó, không tự nhảy đi chỗ khác.
+        guard !userPickedEpisode else { return false }
+
+        let list = orderedEpisodes
+        guard var index = list.firstIndex(where: { $0.id == resolvedStreamId }) else { return false }
+
+        var moved = false
+        while watchedService.isWatched(list[index].id), index + 1 < list.count {
+            index += 1
+            moved = true
+        }
+        guard moved else { return false }
+
+        let next = list[index]
+        print("[Stremio] Tập \(resolvedStreamId) đã xem xong → nút Phát chuyển sang \(next.id)")
+
+        resolvedStreamId = next.id
+        resumeOffsetMs = 0
+        knownDurationMs = 0
+        selectedSeason = next.season
+        fetchStreamOptions(for: next.id)
+        return true
+    }
+
     private func selectEpisode(_ video: StremioVideoEntry) {
         print("[Stremio] Chọn tập: \(video.id)")
+        userPickedEpisode = true
         resolvedStreamId = video.id
 
         if video.id == existingLibraryItem?.state?.videoId {
@@ -435,7 +483,12 @@ struct StremioMovieDetailView: View {
         Task {
             for base in addonBaseURLs {
                 if let detail = try? await StremioAPI.shared.fetchMetaDetail(baseURL: base, type: item.type, id: item.id) {
-                    await MainActor.run { metaDetail = detail }
+                    await MainActor.run {
+                        metaDetail = detail
+                        // Có danh sách tập rồi mới biết tập kế là tập nào. Chạy cả lúc quay về từ player
+                        // (onAppear gọi lại) nên vừa xem xong tập là nút Phát nhảy sang tập kế ngay.
+                        advanceToNextUnwatchedEpisode()
+                    }
                     return
                 }
             }
@@ -472,15 +525,21 @@ struct StremioMovieDetailView: View {
                 }
             }
 
-            await MainActor.run {
+            let advanced = await MainActor.run { () -> Bool in
                 libraryItemId = resolvedLibraryItemId
                 existingLibraryItem = existing
                 resumeOffsetMs = offsetMs
                 knownDurationMs = durationMs
                 resolvedStreamId = streamId
+
+                // Tập vừa resolve từ library có thể đã xem xong rồi (vào lại app sau khi xem hết tập cũ)
+                // — nhảy luôn sang tập kế, và chính nó tự nạp nguồn phát cho tập mới.
+                return advanceToNextUnwatchedEpisode()
             }
 
-            fetchStreamOptions(for: streamId)
+            if !advanced {
+                fetchStreamOptions(for: streamId)
+            }
         }
     }
 
