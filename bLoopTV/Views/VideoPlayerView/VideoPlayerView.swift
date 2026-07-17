@@ -64,6 +64,9 @@ struct VideoPlayerView: View {
     @State private var isScrubbing = false
     @State private var scrubPosition: Double = 0
 
+    // Phần bù phụ đề (giây) cho lần phát này — giữ ở đây để không mất khi đóng/mở lại MediaSettingsPanel.
+    @State private var subtitleDelay: Double = 0
+
     // Che player bằng thumbnail + spinner khi đang load video MỚI (khung mpv lúc này còn đen/rác) — ẩn đi
     // khi video bắt đầu phát thật. Resume (cùng video còn buffer) thì không cần che vì frame có sẵn ngay.
     @State private var showCover = true
@@ -430,6 +433,10 @@ struct VideoPlayerView: View {
                         } else {
                             coordinator.player?.disableSubtitle()
                         }
+                    },
+                    subtitleDelay: $subtitleDelay,
+                    onSubtitleDelayChange: { delay in
+                        coordinator.player?.setSubtitleDelay(delay)
                     }
                 ).onExitCommand {
                     triggerExitComand()

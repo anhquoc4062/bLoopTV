@@ -885,6 +885,13 @@ final class MPVMetalViewController: UIViewController {
         initSubtitleSettings()
     }
     
+    /// Phần bù phụ đề (giây): dương = phụ đề hiện TRỄ hơn tiếng, âm = hiện SỚM hơn.
+    /// String(format:) không truyền locale nên luôn ra dấu chấm thập phân — đúng thứ mpv cần.
+    func setSubtitleDelay(_ seconds: Double) {
+        guard mpv != nil else { return }
+        checkError(mpv_set_property_string(mpv, "sub-delay", String(format: "%.2f", seconds)))
+    }
+
     private func initSubtitleSettings() {
         let subtitleSetting = UserSelectionsService.shared.getSubtitleSetting()
 

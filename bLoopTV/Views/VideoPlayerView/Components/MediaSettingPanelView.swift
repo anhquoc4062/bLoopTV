@@ -15,6 +15,9 @@ struct MediaSettingsPanel: View {
     let streams: [PlexMediaPartStream]
     let onSelectAudio: (PlexMediaPartStream) -> Void
     let onSelectSubtitle: (PlexMediaPartStream?) -> Void
+    /// Phần bù phụ đề (giây) — giữ ở VideoPlayerView để không mất khi đóng/mở lại panel.
+    @Binding var subtitleDelay: Double
+    let onSubtitleDelayChange: (Double) -> Void
 
     @State private var selectedTab: MediaTab = .subtitle
     
@@ -125,6 +128,11 @@ struct MediaSettingsPanel: View {
                         
                         VStack(spacing: 10) {
                             if selectedTab == .subtitle {
+                                SubtitleOffsetRow(
+                                    offset: $subtitleDelay,
+                                    onChange: onSubtitleDelayChange
+                                )
+
                                 // SettingRow(label: "Tìm Phụ Đề Online", value: "Search", icon: "magnifyingglass")
                                 SettingRow(label: "Kích thước", value: "120%", icon: "textformat.size")
                                 SettingRow(label: "Vị trí dọc", value: "Cạnh dưới", icon: "arrow.up.and.line.horizontal.and.arrow.down")
@@ -217,6 +225,82 @@ struct StreamRow: View {
         .buttonStyle(.card)
         .focused($isFocused)
         // .scaleEffect(isFocused ? 1.03 : 1.0)
+    }
+}
+
+/// Hàng chỉnh phần bù phụ đề: focus vào rồi vuốt/bấm trái-phải để trừ/cộng 0,1 giây.
+/// onMoveCommand nuốt luôn lệnh di chuyển nên focus không nhảy sang cột bên cạnh khi đang chỉnh.
+struct SubtitleOffsetRow: View {
+    @Binding var offset: Double
+    let onChange: (Double) -> Void
+
+    @FocusState private var isFocused: Bool
+
+    private static let step = 0.1
+    private static let limit = 60.0
+
+    private var displayValue: String {
+        // Định dạng kiểu Việt: dấu phẩy thập phân, có dấu + khi dương cho rõ chiều bù.
+        let number = String(format: "%.1f", abs(offset)).replacingOccurrences(of: ".", with: ",")
+        let sign = offset > 0 ? "+" : (offset < 0 ? "−" : "")
+        return "\(sign)\(number) giây"
+    }
+
+    var body: some View {
+        Button(action: {}) {
+            HStack {
+                Image(systemName: "timer")
+                    .renderingMode(.template)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 30, height: 30)
+
+                Text("Phần bù phụ đề")
+                    .font(.system(size: 26))
+
+                Spacer()
+
+                // Chỉ gợi ý mũi tên khi đang focus để người dùng biết vuốt được.
+                if isFocused {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 20, weight: .semibold))
+                        .opacity(0.5)
+                }
+
+                Text(displayValue)
+                    .font(.system(size: 26).monospacedDigit())
+                    .opacity(isFocused ? 1 : 0.6)
+
+                if isFocused {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 20, weight: .semibold))
+                        .opacity(0.5)
+                }
+            }
+            .padding(.vertical, 20)
+            .padding(.horizontal, 25)
+            .background(isFocused ? Color.white : Color.clear)
+            .foregroundColor(isFocused ? .black : .white)
+            .cornerRadius(15)
+        }
+        .buttonStyle(.card)
+        .focused($isFocused)
+        .onMoveCommand { direction in
+            switch direction {
+            case .left: adjust(-Self.step)
+            case .right: adjust(Self.step)
+            default: break
+            }
+        }
+    }
+
+    private func adjust(_ delta: Double) {
+        // Nhân/chia 10 rồi làm tròn để tránh sai số dấu phẩy động cộng dồn (0.1 + 0.2 = 0.30000000000000004).
+        let raw = ((offset + delta) * 10).rounded() / 10
+        let clamped = min(max(raw, -Self.limit), Self.limit)
+        guard clamped != offset else { return }
+        offset = clamped
+        onChange(clamped)
     }
 }
 
