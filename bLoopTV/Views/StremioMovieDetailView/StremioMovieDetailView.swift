@@ -39,6 +39,9 @@ struct StremioMovieDetailView: View {
 
     @EnvironmentObject var navPathManager: NavigationPathManager
 
+    /// Đánh dấu đã xem lưu local — @ObservedObject để thẻ tập tự cập nhật dấu check ngay khi thoát player về.
+    @ObservedObject private var watchedService = StremioWatchedService.shared
+
     @State private var metaDetail: StremioMetaDetail?
     @State private var screenWidth: CGFloat = 1920
 
@@ -192,6 +195,17 @@ struct StremioMovieDetailView: View {
             )
         )
         .compositingGroup()
+    }
+
+    private var watchedBadge: some View {
+        ZStack {
+            Circle()
+                .fill(Color("VArtThemeColor"))
+                .frame(width: 32, height: 32)
+            Image(systemName: "checkmark")
+                .font(.system(size: 16, weight: .bold))
+                .foregroundStyle(Color("ButtonText"))
+        }
     }
 
     private var titleView: some View {
@@ -381,6 +395,12 @@ struct StremioMovieDetailView: View {
                             .cornerRadius(14)
                     }
                     .frame(width: cardWidth, height: cardHeight)
+
+                    // Đã xem xong (>=95% thời lượng) — cùng style watchedBadge của SeasonSelectorView bên Plex.
+                    if watchedService.isWatched(video.id) {
+                        watchedBadge
+                            .offset(x: -10, y: 10)
+                    }
 
                     if isCurrent {
                         HStack(spacing: 6) {

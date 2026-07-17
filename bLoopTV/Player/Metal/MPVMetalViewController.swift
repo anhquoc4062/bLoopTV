@@ -773,10 +773,17 @@ final class MPVMetalViewController: UIViewController {
     /// nguyên hành vi cũ (PlexAPI.sendTimelineUpdate) cho nội dung Plex.
     private func sendProgressUpdate(state: String) {
         if let context = stremioContext {
-            guard let authKey = StremioAccountAPI.shared.authKey else { return }
             let timeOffsetMs = self.viewOffset ?? 0
             let liveDurationMs = Int(getDuration() * 1000)
             let durationMs = liveDurationMs > 0 ? liveDurationMs : (self.duration ?? 0)
+
+            // Xem quá mốc 95% thì đánh dấu tập đã xem xong. Đặt trước guard authKey vì đây là dữ liệu lưu
+            // local, không phụ thuộc việc còn đăng nhập account Stremio hay không.
+            if StremioWatchedService.reachedWatchedThreshold(timeOffsetMs: timeOffsetMs, durationMs: durationMs) {
+                StremioWatchedService.shared.markWatched(context.videoId)
+            }
+
+            guard let authKey = StremioAccountAPI.shared.authKey else { return }
             Task {
                 await StremioAccountAPI.shared.updateLibraryItem(
                     authKey: authKey,
