@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import Combine
 
 private struct StremioSearchRow: Identifiable {
     let id: String
@@ -31,23 +32,125 @@ private struct AISearchCatalog {
     let displayTitle: String
 }
 
+@MainActor
+private final class StremioSearchViewModel: ObservableObject {
+    @Published var searchText = ""
+    @Published private(set) var submittedQuery = ""
+    @Published private(set) var rows: [StremioSearchRow] = []
+    @Published private(set) var isSearching = false
+    @Published private(set) var errorMessage: String?
+
+    static let aiCatalogs: [AISearchCatalog] = [
+        AISearchCatalog(manifestName: "ai movie search", displayTitle: "Phim Lẻ"),
+        AISearchCatalog(manifestName: "ai series search", displayTitle: "Phim Bộ")
+    ]
+
+    private var addons: [StremioInstalledAddon] = []
+    private var cancellables = Set<AnyCancellable>()
+    private var searchTask: Task<Void, Never>?
+
+    /// tvOS không có phím Enter — bàn phím của .searchable chỉ cập nhật text, không có sự kiện submit.
+    /// Nên phải tự tìm sau khi người dùng ngừng gõ (giống pipeline của SearchViewModel bên Plex).
+    /// Để 1200ms (dài hơn Plex 800ms) vì mỗi lần gọi là một lượt AI search, không nên bắn liên tục.
+    func start(addons: [StremioInstalledAddon]) {
+        self.addons = addons
+        guard cancellables.isEmpty else { return }
+
+        $searchText
+            .removeDuplicates()
+            .debounce(for: .milliseconds(1200), scheduler: RunLoop.main)
+            .sink { [weak self] text in
+                guard let self else { return }
+                let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+
+                if trimmed.count >= 2 {
+                    self.search(trimmed)
+                } else if trimmed.isEmpty {
+                    self.clear()
+                }
+            }
+            .store(in: &cancellables)
+    }
+
+    private func clear() {
+        searchTask?.cancel()
+        submittedQuery = ""
+        rows = []
+        isSearching = false
+        errorMessage = nil
+    }
+
+    private func search(_ trimmed: String) {
+        // Huỷ lượt tìm trước để kết quả cũ về trễ không đè lên kết quả của từ khoá mới.
+        searchTask?.cancel()
+
+        print("[Stremio] AI search: \(trimmed)")
+        submittedQuery = trimmed
+        isSearching = true
+        errorMessage = nil
+        rows = []
+
+        searchTask = Task {
+            var newRows: [StremioSearchRow] = []
+
+            // Duyệt theo thứ tự aiCatalogs để "Phim Lẻ" luôn đứng trước "Phim Bộ", không phụ thuộc thứ tự
+            // catalog khai báo trong manifest của addon.
+            for spec in Self.aiCatalogs {
+                if Task.isCancelled { return }
+
+                guard let match = findCatalog(named: spec.manifestName) else {
+                    print("[Stremio] không thấy catalog AI '\(spec.manifestName)' trong addon nào")
+                    continue
+                }
+
+                if let metas = try? await StremioAPI.shared.fetchCatalog(
+                    baseURL: match.base,
+                    type: match.catalog.type,
+                    id: match.catalog.id,
+                    searchQuery: trimmed
+                ), !metas.isEmpty {
+                    print("[Stremio] \(spec.displayTitle): \(metas.count) kết quả")
+                    newRows.append(
+                        StremioSearchRow(
+                            id: "\(match.base)-\(match.catalog.type)-\(match.catalog.id)",
+                            title: spec.displayTitle,
+                            items: metas
+                        )
+                    )
+                }
+            }
+
+            if Task.isCancelled { return }
+
+            rows = newRows
+            isSearching = false
+            if newRows.isEmpty {
+                errorMessage = "Không tìm thấy kết quả nào"
+            }
+        }
+    }
+
+    private func findCatalog(named name: String) -> (base: String, catalog: StremioCatalogDescriptor)? {
+        for addon in addons {
+            let base = StremioAccountAPI.baseURL(fromTransportUrl: addon.transportUrl)
+            if let catalog = addon.manifest.catalogs.first(where: {
+                $0.supportsSearch
+                    && $0.name?.trimmingCharacters(in: .whitespaces).lowercased() == name
+            }) {
+                return (base, catalog)
+            }
+        }
+        return nil
+    }
+}
+
 /// Đồng bộ style với SearchView bên Plex: thanh .searchable của hệ thống + lưới 5 cột MovieCardView,
-/// thay vì TextField + nút bấm như trước.
+/// tự tìm sau khi ngừng gõ (tvOS không có phím Enter để submit).
 struct StremioSearchView: View {
     let addons: [StremioInstalledAddon]
 
     @EnvironmentObject var navPathManager: NavigationPathManager
-
-    @State private var query: String = ""
-    @State private var submittedQuery: String = ""
-    @State private var rows: [StremioSearchRow] = []
-    @State private var isSearching = false
-    @State private var errorMessage: String?
-
-    private static let aiCatalogs: [AISearchCatalog] = [
-        AISearchCatalog(manifestName: "ai movie search", displayTitle: "Phim Lẻ"),
-        AISearchCatalog(manifestName: "ai series search", displayTitle: "Phim Bộ")
-    ]
+    @StateObject private var viewModel = StremioSearchViewModel()
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 40), count: 5)
 
@@ -57,16 +160,15 @@ struct StremioSearchView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if submittedQuery.isEmpty && !isSearching {
+            if viewModel.submittedQuery.isEmpty && !viewModel.isSearching {
                 initialStateView
             } else {
                 resultsView
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        // AI search tốn tài nguyên/tiền — chỉ gọi khi người dùng bấm tìm, không gọi theo từng ký tự gõ.
-        .searchable(text: $query, prompt: "Tìm phim, series bằng AI...")
-        .onSubmit(of: .search) { search() }
+        .searchable(text: $viewModel.searchText, prompt: "Tìm phim, series bằng AI...")
+        .onAppear { viewModel.start(addons: addons) }
     }
 
     // MARK: - Trạng thái ban đầu
@@ -88,19 +190,19 @@ struct StremioSearchView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 50) {
                 HStack {
-                    Text(isSearching ? "Đang tìm kiếm..." : "Kết quả cho '\(submittedQuery)'")
-                    if isSearching { ProgressView().controlSize(.small) }
+                    Text(viewModel.isSearching ? "Đang tìm kiếm..." : "Kết quả cho '\(viewModel.submittedQuery)'")
+                    if viewModel.isSearching { ProgressView().controlSize(.small) }
                 }
                 .font(.headline)
                 .padding(.horizontal, 60)
 
-                if let errorMessage, !isSearching {
+                if let errorMessage = viewModel.errorMessage, !viewModel.isSearching {
                     Text(errorMessage)
                         .foregroundColor(.red)
                         .padding(.horizontal, 60)
                 }
 
-                ForEach(rows) { row in
+                ForEach(viewModel.rows) { row in
                     VStack(alignment: .leading, spacing: 20) {
                         Text(row.title)
                             .font(.headline)
@@ -127,68 +229,5 @@ struct StremioSearchView: View {
             }
             .padding(.vertical, 40)
         }
-    }
-
-    // MARK: - Tìm kiếm
-
-    private func search() {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-
-        print("[Stremio] AI search: \(trimmed)")
-        submittedQuery = trimmed
-        isSearching = true
-        errorMessage = nil
-        rows = []
-
-        Task {
-            var newRows: [StremioSearchRow] = []
-
-            // Duyệt theo thứ tự aiCatalogs để "Phim Lẻ" luôn đứng trước "Phim Bộ", không phụ thuộc thứ tự
-            // catalog khai báo trong manifest của addon.
-            for spec in Self.aiCatalogs {
-                guard let match = findCatalog(named: spec.manifestName) else {
-                    print("[Stremio] không thấy catalog AI '\(spec.manifestName)' trong addon nào")
-                    continue
-                }
-
-                if let metas = try? await StremioAPI.shared.fetchCatalog(
-                    baseURL: match.base,
-                    type: match.catalog.type,
-                    id: match.catalog.id,
-                    searchQuery: trimmed
-                ), !metas.isEmpty {
-                    print("[Stremio] \(spec.displayTitle): \(metas.count) kết quả")
-                    newRows.append(
-                        StremioSearchRow(
-                            id: "\(match.base)-\(match.catalog.type)-\(match.catalog.id)",
-                            title: spec.displayTitle,
-                            items: metas
-                        )
-                    )
-                }
-            }
-
-            await MainActor.run {
-                rows = newRows
-                isSearching = false
-                if newRows.isEmpty {
-                    errorMessage = "Không tìm thấy kết quả nào"
-                }
-            }
-        }
-    }
-
-    private func findCatalog(named name: String) -> (base: String, catalog: StremioCatalogDescriptor)? {
-        for addon in addons {
-            let base = StremioAccountAPI.baseURL(fromTransportUrl: addon.transportUrl)
-            if let catalog = addon.manifest.catalogs.first(where: {
-                $0.supportsSearch
-                    && $0.name?.trimmingCharacters(in: .whitespaces).lowercased() == name
-            }) {
-                return (base, catalog)
-            }
-        }
-        return nil
     }
 }
