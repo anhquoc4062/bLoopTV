@@ -144,15 +144,13 @@ private final class StremioSearchViewModel: ObservableObject {
     }
 }
 
-/// Đồng bộ style với SearchView bên Plex: thanh .searchable của hệ thống + lưới 5 cột MovieCardView,
-/// tự tìm sau khi ngừng gõ (tvOS không có phím Enter để submit).
+/// Thanh .searchable của hệ thống (giống SearchView bên Plex), tự tìm sau khi ngừng gõ vì tvOS không có
+/// phím Enter để submit. Kết quả hiện thành 2 mục cuộn ngang bằng SectionView, giống ngoài Home.
 struct StremioSearchView: View {
     let addons: [StremioInstalledAddon]
 
     @EnvironmentObject var navPathManager: NavigationPathManager
     @StateObject private var viewModel = StremioSearchViewModel()
-
-    private let columns = Array(repeating: GridItem(.flexible(), spacing: 40), count: 5)
 
     private var addonBaseURLs: [String] {
         addons.map { StremioAccountAPI.baseURL(fromTransportUrl: $0.transportUrl) }
@@ -206,28 +204,23 @@ struct StremioSearchView: View {
                         .padding(.horizontal, 60)
                 }
 
+                // Dùng lại SectionView cuộn ngang y như ngoài Home — focus đã chạy ổn sẵn ở đó, khỏi
+                // phải tự dựng lưới dọc (LazyVGrid trên tvOS rất khó cho focus rời khỏi lưới xuống dưới).
                 ForEach(viewModel.rows) { row in
-                    VStack(alignment: .leading, spacing: 20) {
-                        Text(row.title)
-                            .font(.headline)
-                            .padding(.horizontal, 60)
-
-                        LazyVGrid(columns: columns, spacing: 60) {
-                            ForEach(row.metadatas) { metadata in
-                                MovieCardView(
-                                    metadata: metadata,
-                                    isLandscape: false,
-                                    isContinueWatching: false,
-                                    onSelect: {
-                                        guard let item = row.item(forMetadataId: metadata.id) else { return }
-                                        navPathManager.push(.stremioMovieDetail(item: item, addonBaseURLs: addonBaseURLs))
-                                    },
-                                    subtitleOverride: row.item(forMetadataId: metadata.id)?.cardSubtitle
-                                )
-                            }
+                    SectionView(
+                        sectionTitle: row.title,
+                        hubKey: row.id,
+                        metadatas: row.metadatas,
+                        isLandscapeSection: false,
+                        isDiscover: false,
+                        onSelectItem: { metadata in
+                            guard let item = row.item(forMetadataId: metadata.id) else { return }
+                            navPathManager.push(.stremioMovieDetail(item: item, addonBaseURLs: addonBaseURLs))
+                        },
+                        subtitleProvider: { metadata in
+                            row.item(forMetadataId: metadata.id)?.cardSubtitle
                         }
-                        .padding(.horizontal, 60)
-                    }
+                    )
                     .focusSection()
                 }
             }
