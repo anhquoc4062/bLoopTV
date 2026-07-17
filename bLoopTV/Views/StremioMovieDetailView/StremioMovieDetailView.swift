@@ -110,11 +110,10 @@ struct StremioMovieDetailView: View {
                 Spacer()
 
                 if let logoUrlString = metaDetail?.logo, let logoURL = URL(string: logoUrlString) {
-                    WebImage(url: logoURL, options: [.scaleDownLargeImages]) { image in
+                    FadeInWebImage(url: logoURL) { image in
                         image.resizable().scaledToFit().frame(maxWidth: 300, maxHeight: 130)
-                    } placeholder: {
-                        Color.clear.frame(height: 90)
                     }
+                    .frame(maxWidth: 300, maxHeight: 130)
                 } else {
                     titleView
                 }
@@ -147,51 +146,11 @@ struct StremioMovieDetailView: View {
         )
     }
 
-    // Neo ảnh về bên phải, chỉ chiếm 90% chiều rộng + mask mờ dần sang trái — tránh bị crop lộ liễu 2 bên
-    // khi ảnh "background" của Stremio không đúng tỉ lệ màn hình (giống kỹ thuật MovieDetailView bên Plex).
     @ViewBuilder
     private var bannerView: some View {
         let bannerUrlString = metaDetail?.background ?? item.poster ?? ""
-        let bannerWidth = screenWidth * 0.90
 
-        WebImage(url: URL(string: bannerUrlString), options: [.scaleDownLargeImages]) { image in
-            image
-                .resizable()
-                .scaledToFill()
-                .frame(width: bannerWidth, height: 880)
-                .clipped()
-                .mask(bannerMask)
-        } placeholder: {
-            Color.clear.frame(width: bannerWidth, height: 880)
-        }
-        .frame(maxWidth: .infinity, maxHeight: 880, alignment: .trailing)
-    }
-
-    private var bannerMask: some View {
-        LinearGradient(
-            gradient: Gradient(stops: [
-                .init(color: .white, location: 0),
-                .init(color: .white, location: 0.1),
-                .init(color: .white, location: 0.3),
-                .init(color: .clear, location: 1.0)
-            ]),
-            startPoint: .top,
-            endPoint: .bottom
-        )
-        .mask(
-            LinearGradient(
-                stops: [
-                    .init(color: .clear, location: 0.0),
-                    .init(color: .black.opacity(0.2), location: 0.15),
-                    .init(color: .black, location: 0.40),
-                    .init(color: .black, location: 0.80),
-                    .init(color: .black, location: 0.99)
-                ],
-                startPoint: .leading,
-                endPoint: .trailing
-            )
-        )
-        .compositingGroup()
+        DetailHeroBanner(imageURL: URL(string: bannerUrlString), screenWidth: screenWidth)
     }
 
     private var titleView: some View {
