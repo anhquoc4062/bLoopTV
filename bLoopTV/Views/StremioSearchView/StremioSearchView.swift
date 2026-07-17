@@ -188,7 +188,11 @@ struct StremioSearchView: View {
 
     private var resultsView: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 50) {
+            // VStack chứ KHÔNG LazyVStack: trên tvOS ScrollView chỉ cuộn khi focus di chuyển, mà focus chỉ
+            // nhảy xuống được nếu mục tiêu đã dựng sẵn. LazyVStack chưa dựng mục "Phim Bộ" khi nó còn ngoài
+            // màn hình → không có gì bên dưới để nhận focus → không cuộn xuống được. Ở đây chỉ 2 mục nên
+            // dựng hết cũng không tốn gì.
+            VStack(alignment: .leading, spacing: 50) {
                 HStack {
                     Text(viewModel.isSearching ? "Đang tìm kiếm..." : "Kết quả cho '\(viewModel.submittedQuery)'")
                     if viewModel.isSearching { ProgressView().controlSize(.small) }
