@@ -78,6 +78,8 @@ struct StremioMovieDetailView: View {
     @State private var hasPreparedStreams = false
     /// Người dùng đã tự bấm chọn tập trong phiên này — khi đó không tự nhảy sang tập kế nữa.
     @State private var userPickedEpisode = false
+    /// Đổi mỗi lần bắt đầu 1 lượt lấy nguồn phát — kết quả của lượt cũ (đổi tập khi đang tải) bị bỏ qua.
+    @State private var streamFetchToken = UUID()
 
     var body: some View {
         detailContent
@@ -544,36 +546,60 @@ struct StremioMovieDetailView: View {
     }
 
     private func fetchStreamOptions(for streamId: String) {
+        let token = UUID()
+        streamFetchToken = token
+
         isLoadingStreams = true
         streamOptions = []
+        extraSubtitleStreams = []
         errorMessage = nil
 
-        Task {
-            var options: [StremioStreamOption] = []
-            // Một số addon trả lẫn link phụ đề rời ngay trong /stream (không phải nằm trong "subtitles" của
-            // 1 stream video) — vẫn phải gom lại để đưa vào player, không được bỏ đi.
-            var subtitleStreams: [StremioStream] = []
+        let type = item.type
+        let bases = addonBaseURLs
 
-            for base in addonBaseURLs {
-                if let streams = try? await StremioAPI.shared.fetchStreams(baseURL: base, type: item.type, id: streamId) {
-                    for stream in streams where stream.url != nil {
-                        let option = StremioStreamOption(addonBase: base, stream: stream)
-                        if option.isSubtitleFile {
-                            subtitleStreams.append(stream)
-                        } else {
-                            options.append(option)
+        Task {
+            // Hỏi tất cả addon SONG SONG, không chờ nhau. Addon nào trả về trước thì gom nguồn của nó vào
+            // ngay và tắt loading — khỏi phải đợi mấy addon chậm.
+            await withTaskGroup(of: (options: [StremioStreamOption], subs: [StremioStream]).self) { group in
+                for base in bases {
+                    group.addTask {
+                        guard let streams = try? await StremioAPI.shared.fetchStreams(baseURL: base, type: type, id: streamId) else {
+                            return ([], [])
+                        }
+                        var opts: [StremioStreamOption] = []
+                        // Một số addon trả lẫn link phụ đề rời ngay trong /stream — gom riêng, không bỏ.
+                        var subs: [StremioStream] = []
+                        for stream in streams where stream.url != nil {
+                            let option = StremioStreamOption(addonBase: base, stream: stream)
+                            if option.isSubtitleFile {
+                                subs.append(stream)
+                            } else {
+                                opts.append(option)
+                            }
+                        }
+                        return (opts, subs)
+                    }
+                }
+
+                for await result in group {
+                    await MainActor.run {
+                        // Đổi tập khi đang tải → token khác, bỏ kết quả của lượt cũ.
+                        guard streamFetchToken == token else { return }
+                        streamOptions.append(contentsOf: result.options)
+                        extraSubtitleStreams.append(contentsOf: result.subs)
+                        // Có nguồn phát đầu tiên là bỏ loading ngay; addon về sau vẫn append thêm vào danh sách.
+                        if !result.options.isEmpty {
+                            isLoadingStreams = false
                         }
                     }
                 }
             }
 
-            print("[Stremio] Có \(options.count) nguồn phát, \(subtitleStreams.count) sub rời riêng cho \(streamId)")
-
             await MainActor.run {
-                streamOptions = options
-                extraSubtitleStreams = subtitleStreams
+                guard streamFetchToken == token else { return }
+                print("[Stremio] Có \(streamOptions.count) nguồn phát, \(extraSubtitleStreams.count) sub rời riêng cho \(streamId)")
                 isLoadingStreams = false
-                if options.isEmpty {
+                if streamOptions.isEmpty {
                     errorMessage = "Không tìm được nguồn phát cho mục này"
                 }
             }
