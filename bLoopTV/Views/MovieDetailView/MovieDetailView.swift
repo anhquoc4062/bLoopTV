@@ -347,10 +347,11 @@ struct MovieDetailView: View {
             blurColors.bottomLeft = colors.bottomLeft
             blurColors.bottomRight = colors.bottomRight
         }
-
+        
         // Hero chỉ hiện ảnh "background" từ Discover (không dùng poster local làm placeholder).
         // localThumbnailURL vẫn cần cho lớp che (cover) của player khi bấm phát.
         viewModel.fetchThumbnail(url: metadata.thumbnail)
+
 
         // Fetch discover image nếu cần (có thể ghi đè baseline ở trên bằng ảnh "background"/logo đẹp hơn).
         // Thử ngay với guid từ list (nhanh), thường là guid canonical "plex://..." với server dùng agent mới.
@@ -365,7 +366,6 @@ struct MovieDetailView: View {
                 id: metadata.grandParentId ?? metadata.parentId ?? metadata.id,
                 isDiscover: isDiscover
             )
-
             // Nội dung đã ở dạng Discover sẵn (isDiscover == true) thì metaDataDetail đã có ảnh, dùng luôn
             // thay vì gọi lại API discover lần nữa như nhánh !isDiscover ở trên.
             if isDiscover, let detail = viewModel.metaDataDetail {

@@ -606,6 +606,10 @@ struct StremioMovieDetailView: View {
             return
         }
 
+        // Đã bấm Phát = chốt xem tập này, không còn là "đang chọn tập tay" nữa. Bỏ cờ để khi xem xong
+        // quay về, advanceToNextUnwatchedEpisode được phép nhảy sang tập kế (nếu tập này đã đạt 95%).
+        userPickedEpisode = false
+
         navPathManager.push(.videoPlayer(playbackData: playbackData))
     }
 }
