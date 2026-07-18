@@ -26,6 +26,32 @@ private struct StremioStreamOption: Identifiable {
     }
 }
 
+/// Danh sách gợi ý từ TMDB, chuyển sẵn sang PlexMetaData để dùng chung SectionView/MovieCardView.
+/// Cùng loại với phim đang xem (recommendations của /movie ra phim lẻ, của /tv ra series).
+private struct RecommendationRow {
+    let isMovie: Bool
+    let items: [TMDBTitle]
+    let metadatas: [PlexMetaData]
+
+    init(isMovie: Bool, items: [TMDBTitle]) {
+        self.isMovie = isMovie
+        self.items = items
+        self.metadatas = items.map { t in
+            PlexMetaData.placeholder(
+                id: "tmdb-\(t.id)",
+                title: t.displayName,
+                poster: t.posterURL,
+                type: isMovie ? "movie" : "series"
+            )
+        }
+    }
+
+    func item(forMetadataId id: String) -> TMDBTitle? {
+        guard id.hasPrefix("tmdb-"), let tid = Int(id.dropFirst(5)) else { return nil }
+        return items.first { $0.id == tid }
+    }
+}
+
 /// Trang detail riêng cho item Stremio, viết mới hoàn toàn (không tái sử dụng MovieDetailView của Plex
 /// vì view đó gắn chặt với PlexMetaData/ratingKey thật). Layout hero + nút Phát clone style MovieDetailView,
 /// dùng "background" (ảnh ngang thật) từ /meta thay vì kéo giãn poster (ảnh dọc) gây bể hình.
@@ -81,10 +107,20 @@ struct StremioMovieDetailView: View {
     /// Đổi mỗi lần bắt đầu 1 lượt lấy nguồn phát — kết quả của lượt cũ (đổi tập khi đang tải) bị bỏ qua.
     @State private var streamFetchToken = UUID()
 
+    // Làm giàu bằng TMDB (tiếng Việt). Thumbnail/logo vẫn giữ của Stremio; chỉ title/summary/rating +
+    // cast + gợi ý là từ TMDB. nil = chưa có/không cấu hình key → dùng lại dữ liệu Stremio như cũ.
+    @State private var tmdbTitle: String?
+    @State private var tmdbOverview: String?
+    @State private var tmdbRating: Double?
+    @State private var tmdbCast: [PlexActor] = []
+    @State private var recommendationRow: RecommendationRow?
+    @State private var hasEnrichedTMDB = false
+
     var body: some View {
         detailContent
             .onAppear {
                 loadMetaDetail()
+                enrichFromTMDBIfNeeded()
                 // Quay lại từ VideoPlayerView không gọi lại luồng lấy stream nữa — giữ nguyên kết quả cũ.
                 guard !hasPreparedStreams else { return }
                 hasPreparedStreams = true
@@ -103,6 +139,28 @@ struct StremioMovieDetailView: View {
                     if item.type == "series" && !seasons.isEmpty {
                         seasonEpisodeSection.focusSection()
                     }
+
+                    VStack(alignment: .leading, spacing: 48) {
+                        if !tmdbCast.isEmpty {
+                            ActorSectionView(listRole: tmdbCast)
+                                .padding(.horizontal, 60)
+                        }
+
+                        if let row = recommendationRow {
+                            SectionView(
+                                sectionTitle: "Gợi ý cho bạn",
+                                hubKey: "tmdb-recommendations",
+                                metadatas: row.metadatas,
+                                isLandscapeSection: false,
+                                isDiscover: false,
+                                onSelectItem: { openRecommendation($0) },
+                                subtitleProvider: { _ in row.isMovie ? "Phim lẻ" : "Phim bộ" }
+                            )
+                            .focusSection()
+                        }
+                    }
+                    .padding(.top, 40)
+                    .padding(.bottom, 80)
                 }
             }
         }
@@ -172,7 +230,7 @@ struct StremioMovieDetailView: View {
     }
 
     private var titleView: some View {
-        Text(item.name)
+        Text(tmdbTitle ?? item.name)
             .font(.system(size: 48, weight: .bold))
             .foregroundStyle(.white)
             .lineLimit(2)
@@ -183,6 +241,7 @@ struct StremioMovieDetailView: View {
         let parts = [
             metaDetail?.releaseInfo,
             metaDetail?.imdbRating.map { "IMDb \($0)" },
+            tmdbRating.map { String(format: "TMDB %.1f", $0) },
             item.type.capitalized
         ].compactMap { $0 }
 
@@ -192,7 +251,8 @@ struct StremioMovieDetailView: View {
     }
 
     private var summaryView: some View {
-        Text(metaDetail?.description ?? "Chưa có mô tả.")
+        // Ưu tiên mô tả tiếng Việt từ TMDB; chưa có thì dùng mô tả gốc của Stremio.
+        Text(tmdbOverview ?? metaDetail?.description ?? "Chưa có mô tả.")
             .font(.system(size: 20))
             .foregroundStyle(.white.opacity(0.8))
             .lineLimit(4)
@@ -477,6 +537,66 @@ struct StremioMovieDetailView: View {
         }
 
         fetchStreamOptions(for: video.id)
+    }
+
+    // MARK: - Làm giàu bằng TMDB (tiếng Việt + cast + gợi ý)
+
+    private func enrichFromTMDBIfNeeded() {
+        guard !hasEnrichedTMDB, TMDBAPI.shared.isConfigured else { return }
+        hasEnrichedTMDB = true
+
+        // item.id có thể kèm season/episode ("tt123:1:2") — chỉ lấy IMDb id trần cho TMDB.
+        let imdbId = item.id.split(separator: ":").first.map(String.init) ?? item.id
+        let isMovie = item.type == "movie"
+
+        Task {
+            guard let found = await TMDBAPI.shared.find(imdbId: imdbId, isMovie: isMovie) else {
+                print("[TMDB] không tìm thấy \(imdbId)")
+                return
+            }
+
+            // Bước 1 (nhanh): title/summary/rating hiện trước.
+            await MainActor.run {
+                if !found.displayName.isEmpty { tmdbTitle = found.displayName }
+                if let o = found.overview, !o.isEmpty { tmdbOverview = o }
+                if let r = found.voteAverage, r > 0 { tmdbRating = r }
+            }
+
+            // Bước 2: cast + gợi ý (kèm overview đầy đủ hơn) fill vào sau.
+            guard let detail = await TMDBAPI.shared.detail(tmdbId: found.id, isMovie: isMovie) else { return }
+            await MainActor.run {
+                if !detail.displayName.isEmpty { tmdbTitle = detail.displayName }
+                if let o = detail.overview, !o.isEmpty { tmdbOverview = o }
+                if let r = detail.voteAverage, r > 0 { tmdbRating = r }
+
+                tmdbCast = (detail.credits?.cast ?? []).prefix(20).map { $0.asPlexActor }
+
+                let recs = detail.recommendations?.results.filter { $0.posterURL != nil } ?? []
+                if !recs.isEmpty {
+                    recommendationRow = RecommendationRow(isMovie: isMovie, items: recs)
+                }
+            }
+        }
+    }
+
+    private func openRecommendation(_ metadata: PlexMetaData) {
+        guard let row = recommendationRow, let rec = row.item(forMetadataId: metadata.id) else { return }
+        Task {
+            // Gợi ý TMDB không có sẵn IMDb id — tra thêm 1 lần (chỉ khi bấm) để mở đúng trang Stremio.
+            guard let imdb = await TMDBAPI.shared.imdbId(tmdbId: rec.id, isMovie: row.isMovie) else {
+                print("[TMDB] không lấy được IMDb id cho gợi ý \(rec.id)")
+                return
+            }
+            await MainActor.run {
+                let newItem = StremioMeta(
+                    id: imdb,
+                    type: row.isMovie ? "movie" : "series",
+                    name: rec.displayName,
+                    poster: rec.posterURL
+                )
+                navPathManager.push(.stremioMovieDetail(item: newItem, addonBaseURLs: addonBaseURLs))
+            }
+        }
     }
 
     // MARK: - Load meta chi tiết cho hero (banner/logo/mô tả/thể loại/danh sách tập)
