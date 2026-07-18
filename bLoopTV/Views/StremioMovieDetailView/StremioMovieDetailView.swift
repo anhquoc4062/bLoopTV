@@ -35,9 +35,15 @@ private struct StremioStreamOption: Identifiable {
 /// Khi phát, đi qua đúng VideoPlayerView/PlaybackData pipeline sẵn có của app (giống hệt luồng Plex).
 struct StremioMovieDetailView: View {
     let item: StremioMeta
-    let addonBaseURLs: [String]
+    let addons: [StremioInstalledAddon]
+
+    /// Base URL của mọi addon — dùng để lấy nguồn phát (stream) từ tất cả addon như cũ.
+    private var addonBaseURLs: [String] { addons.baseURLs }
 
     @EnvironmentObject var navPathManager: NavigationPathManager
+
+    /// Meta chính đã về từ TMDB chưa — để Cinemeta (placeholder) không ghi đè lên bản TMDB.
+    @State private var hasPrimaryMeta = false
 
     /// Đánh dấu đã xem lưu local — @ObservedObject để thẻ tập tự cập nhật dấu check ngay khi thoát player về.
     @ObservedObject private var watchedService = StremioWatchedService.shared
@@ -482,19 +488,37 @@ struct StremioMovieDetailView: View {
     // MARK: - Load meta chi tiết cho hero (banner/logo/mô tả/thể loại/danh sách tập)
 
     private func loadMetaDetail() {
-        Task {
-            for base in addonBaseURLs {
-                if let detail = try? await StremioAPI.shared.fetchMetaDetail(baseURL: base, type: item.type, id: item.id) {
-                    await MainActor.run {
-                        metaDetail = detail
-                        // Có danh sách tập rồi mới biết tập kế là tập nào. Chạy cả lúc quay về từ player
-                        // (onAppear gọi lại) nên vừa xem xong tập là nút Phát nhảy sang tập kế ngay.
-                        advanceToNextUnwatchedEpisode()
-                    }
-                    return
+        // Placeholder nhanh từ Cinemeta để hero không trống trong lúc chờ TMDB (thường TMDB chậm hơn vì
+        // đi qua server addon + localize). Cinemeta chỉ set nếu bản TMDB chính chưa về.
+        if let cinemetaBase = addons.cinemeta?.baseURL {
+            Task {
+                guard let detail = try? await StremioAPI.shared.fetchMetaDetail(baseURL: cinemetaBase, type: item.type, id: item.id) else { return }
+                await MainActor.run {
+                    guard !hasPrimaryMeta else { return }
+                    applyMeta(detail)
                 }
             }
         }
+
+        // Nguồn chính: TMDB addon (title/summary tiếng Việt). Không có TMDB thì fallback duyệt mọi addon.
+        Task {
+            let primaryBases = addons.tmdb.map { [$0.baseURL] } ?? addonBaseURLs
+            for base in primaryBases {
+                guard let detail = try? await StremioAPI.shared.fetchMetaDetail(baseURL: base, type: item.type, id: item.id) else { continue }
+                await MainActor.run {
+                    hasPrimaryMeta = true
+                    applyMeta(detail)
+                }
+                return
+            }
+        }
+    }
+
+    private func applyMeta(_ detail: StremioMetaDetail) {
+        metaDetail = detail
+        // Có danh sách tập rồi mới biết tập kế là tập nào. Chạy cả lúc quay về từ player (onAppear gọi lại)
+        // nên vừa xem xong tập là nút Phát nhảy sang tập kế ngay.
+        advanceToNextUnwatchedEpisode()
     }
 
     // MARK: - Chuẩn bị vị trí resume + danh sách nguồn phát để chọn khi bấm Phát

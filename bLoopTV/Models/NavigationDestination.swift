@@ -19,6 +19,6 @@ enum NavigationDestination: Hashable {
     case stremioHome
     case stremioLogin
     case stremioAccountHome
-    case stremioMovieDetail(item: StremioMeta, addonBaseURLs: [String])
+    case stremioMovieDetail(item: StremioMeta, addons: [StremioInstalledAddon])
     case stremioSearch(addons: [StremioInstalledAddon])
 }
