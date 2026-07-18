@@ -98,7 +98,7 @@ enum StremioPlaybackConverter {
             videoID: stableVideoId(item.id),
             grandVideoID: 0,
             ratingKey: item.id,
-            thumbnailUrl: coverImageUrl ?? item.poster ?? "",
+            thumbnailUrl: coverImageUrl ?? item.asPlexMetaData.thumbnail ?? "",
             mediaPartStreams: mediaStreams,
             currentIndex: 0,
             playlist: [],
