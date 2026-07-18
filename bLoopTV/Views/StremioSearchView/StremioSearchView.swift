@@ -152,10 +152,6 @@ struct StremioSearchView: View {
     @EnvironmentObject var navPathManager: NavigationPathManager
     @StateObject private var viewModel = StremioSearchViewModel()
 
-    private var addonBaseURLs: [String] {
-        addons.map { StremioAccountAPI.baseURL(fromTransportUrl: $0.transportUrl) }
-    }
-
     var body: some View {
         VStack(spacing: 0) {
             if viewModel.submittedQuery.isEmpty && !viewModel.isSearching {
@@ -215,7 +211,7 @@ struct StremioSearchView: View {
                         isDiscover: false,
                         onSelectItem: { metadata in
                             guard let item = row.item(forMetadataId: metadata.id) else { return }
-                            navPathManager.push(.stremioMovieDetail(item: item, addonBaseURLs: addonBaseURLs))
+                            navPathManager.push(.stremioMovieDetail(item: item, addons: addons))
                         },
                         subtitleProvider: { metadata in
                             row.item(forMetadataId: metadata.id)?.cardSubtitle

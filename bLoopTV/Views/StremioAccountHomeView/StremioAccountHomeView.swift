@@ -33,7 +33,6 @@ struct StremioAccountHomeView: View {
 
     @State private var rows: [StremioAccountCatalogRow] = []
     @State private var addons: [StremioInstalledAddon] = []
-    @State private var allAddonBaseURLs: [String] = []
     @State private var isLoadingCatalogs = false
     @State private var errorMessage: String?
 
@@ -68,7 +67,7 @@ struct StremioAccountHomeView: View {
                         isDiscover: false,
                         onSelectItem: { metadata in
                             guard let item = row.item(forMetadataId: metadata.id) else { return }
-                            navPathManager.push(.stremioMovieDetail(item: item, addonBaseURLs: allAddonBaseURLs))
+                            navPathManager.push(.stremioMovieDetail(item: item, addons: addons))
                         },
                         subtitleProvider: { metadata in
                             row.item(forMetadataId: metadata.id)?.cardSubtitle
@@ -137,7 +136,6 @@ struct StremioAccountHomeView: View {
             }
         }
 
-        // Chỉ load 4 mục cho nhẹ (Movies/Series x Popular/Featured), không loop hết catalog mọi addon.
         isLoadingCatalogs = true
         errorMessage = nil
 
@@ -147,21 +145,44 @@ struct StremioAccountHomeView: View {
                 let addons = try await StremioAccountAPI.shared.fetchAddonCollection(authKey: authKey)
                 print("[Stremio] Có \(addons.count) addon trong account")
 
-                let addonBaseURLs = addons.map { StremioAccountAPI.baseURL(fromTransportUrl: $0.transportUrl) }
-
-                async let moviePopular = fetchCatalogRow(addons: addons, addonBaseURLs: addonBaseURLs, type: "movie", keyword: "popular", fallbackId: "top", title: "Phim lẻ - Phổ biến")
-                async let movieFeatured = fetchCatalogRow(addons: addons, addonBaseURLs: addonBaseURLs, type: "movie", keyword: "featured", fallbackId: nil, title: "Phim lẻ - Nổi bật")
-                async let seriesPopular = fetchCatalogRow(addons: addons, addonBaseURLs: addonBaseURLs, type: "series", keyword: "popular", fallbackId: "top", title: "Phim bộ - Phổ biến")
-                async let seriesFeatured = fetchCatalogRow(addons: addons, addonBaseURLs: addonBaseURLs, type: "series", keyword: "featured", fallbackId: nil, title: "Phim bộ - Nổi bật")
-                let featuredRows = await [moviePopular, movieFeatured, seriesPopular, seriesFeatured].compactMap { $0 }
-
                 await MainActor.run {
                     self.addons = addons
-                    allAddonBaseURLs = addonBaseURLs
-                    rows.append(contentsOf: featuredRows)
+                }
+
+                // Home chỉ lấy các mục của addon Watchly (không loop hết catalog mọi addon như trước).
+                guard let watchly = addons.watchly else {
+                    await MainActor.run {
+                        isLoadingCatalogs = false
+                        if rows.isEmpty { errorMessage = "Chưa cài addon Watchly trong tài khoản Stremio" }
+                    }
+                    return
+                }
+
+                let base = watchly.baseURL
+                // Mỗi catalog Watchly = 1 mục, giữ đúng thứ tự khai báo. Bỏ catalog cần tham số bắt buộc.
+                let catalogs = watchly.manifest.catalogs.filter { !$0.hasRequiredExtra }
+
+                let fetched: [StremioAccountCatalogRow] = await withTaskGroup(of: (Int, StremioAccountCatalogRow?).self) { group in
+                    for (index, catalog) in catalogs.enumerated() {
+                        group.addTask {
+                            guard let metas = try? await StremioAPI.shared.fetchCatalog(baseURL: base, type: catalog.type, id: catalog.id),
+                                  !metas.isEmpty else { return (index, nil) }
+                            let title = catalog.name ?? catalog.id.capitalized
+                            return (index, StremioAccountCatalogRow(id: "\(base)-\(catalog.type)-\(catalog.id)", title: title, items: metas))
+                        }
+                    }
+                    var out: [(Int, StremioAccountCatalogRow)] = []
+                    for await (index, row) in group {
+                        if let row { out.append((index, row)) }
+                    }
+                    return out.sorted { $0.0 < $1.0 }.map { $0.1 }
+                }
+
+                await MainActor.run {
+                    rows.append(contentsOf: fetched)
                     isLoadingCatalogs = false
                     if rows.isEmpty {
-                        errorMessage = "Không tìm thấy catalog nào trong các addon của account"
+                        errorMessage = "Addon Watchly không trả về mục nào"
                     }
                 }
             } catch {
@@ -172,24 +193,6 @@ struct StremioAccountHomeView: View {
                 }
             }
         }
-    }
-
-    /// Tìm addon đầu tiên (theo thứ tự trong account) có catalog khớp keyword (vd "popular"/"featured")
-    /// đúng loại (movie/series) và trả dữ liệu. `fallbackId` dùng cho trường hợp addon không đặt tên
-    /// rõ ràng nhưng dùng id quy ước (Cinemeta dùng id "top" cho catalog Popular).
-    private func fetchCatalogRow(addons: [StremioInstalledAddon], addonBaseURLs: [String], type: String, keyword: String, fallbackId: String?, title: String) async -> StremioAccountCatalogRow? {
-        for (addon, base) in zip(addons, addonBaseURLs) {
-            guard let catalog = addon.manifest.catalogs.first(where: {
-                $0.type == type && ($0.name?.lowercased().contains(keyword) == true || $0.id.lowercased() == fallbackId)
-            }) else { continue }
-
-            if let metas = try? await StremioAPI.shared.fetchCatalog(baseURL: base, type: catalog.type, id: catalog.id),
-               !metas.isEmpty {
-                print("[Stremio] \(title): \(addon.manifest.name)/\(catalog.type)-\(catalog.id), \(metas.count) item(s)")
-                return StremioAccountCatalogRow(id: "\(base)-\(catalog.type)-\(catalog.id)", title: title, items: metas)
-            }
-        }
-        return nil
     }
 
     private func fetchContinueWatchingRow(authKey: String) async -> StremioAccountCatalogRow? {

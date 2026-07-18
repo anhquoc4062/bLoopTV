@@ -57,9 +57,8 @@ struct ContentView: View {
             Task {
                 guard let authKey = StremioAccountAPI.shared.authKey,
                       let addons = try? await StremioAccountAPI.shared.fetchAddonCollection(authKey: authKey) else { return }
-                let addonBaseURLs = addons.map { StremioAccountAPI.baseURL(fromTransportUrl: $0.transportUrl) }
                 await MainActor.run {
-                    navPathManager.push(.stremioMovieDetail(item: item, addonBaseURLs: addonBaseURLs))
+                    navPathManager.push(.stremioMovieDetail(item: item, addons: addons))
                 }
             }
 
@@ -92,8 +91,8 @@ struct ContentView: View {
             StremioLoginView()
         case .stremioAccountHome:
             StremioAccountHomeView()
-        case .stremioMovieDetail(let item, let addonBaseURLs):
-            StremioMovieDetailView(item: item, addonBaseURLs: addonBaseURLs)
+        case .stremioMovieDetail(let item, let addons):
+            StremioMovieDetailView(item: item, addons: addons)
         case .stremioSearch(let addons):
             StremioSearchView(addons: addons)
 //        case .videoPlayer(let data):
