@@ -25,4 +25,18 @@ enum AppSecrets {
 
     /// TMDB API key (v3). Rỗng nếu chưa cấu hình.
     static var tmdbAPIKey: String { string("TMDBAPIKey") }
+
+    /// Host API TMDB. Để trống = dùng thẳng TMDB. Điền URL proxy (vd Cloudflare Worker) khi ISP chặn
+    /// api.themoviedb.org. KHÔNG kèm dấu "/" cuối. Vd: "https://tmdb-proxy.example.workers.dev/3".
+    static var tmdbAPIHost: String {
+        let v = string("TMDBAPIHost")
+        return v.isEmpty ? "https://api.themoviedb.org/3" : v
+    }
+
+    /// Base ảnh TMDB (poster/profile). Để trống = dùng image.tmdb.org. Điền proxy nếu ISP chặn luôn ảnh.
+    /// KHÔNG kèm dấu "/" cuối. Vd: "https://img-proxy.example.workers.dev/t/p".
+    static var tmdbImageHost: String {
+        let v = string("TMDBImageHost")
+        return v.isEmpty ? "https://image.tmdb.org/t/p" : v
+    }
 }

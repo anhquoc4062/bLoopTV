@@ -17,7 +17,8 @@ final class TMDBAPI {
     private var apiKey: String { AppSecrets.tmdbAPIKey }
 
     private let language = "vi-VN"
-    private let host = "https://api.themoviedb.org/3"
+    // Đọc từ Secrets.plist để đổi sang proxy được khi ISP chặn TMDB (không cần sửa code).
+    private var host: String { AppSecrets.tmdbAPIHost }
 
     var isConfigured: Bool { !apiKey.isEmpty }
 

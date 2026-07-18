@@ -9,8 +9,9 @@
 import Foundation
 
 enum TMDBImage {
-    static let posterBase = "https://image.tmdb.org/t/p/w500"
-    static let profileBase = "https://image.tmdb.org/t/p/w185"
+    // Base đọc từ Secrets.plist (đổi được sang proxy khi ISP chặn image.tmdb.org).
+    static var posterBase: String { AppSecrets.tmdbImageHost + "/w500" }
+    static var profileBase: String { AppSecrets.tmdbImageHost + "/w185" }
 }
 
 /// 1 phim/series ở dạng rút gọn — dùng cho kết quả /find và danh sách recommendations.
