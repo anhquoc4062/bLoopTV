@@ -48,6 +48,9 @@ struct StremioMovieDetailView: View {
     /// Đánh dấu đã xem lưu local — @ObservedObject để thẻ tập tự cập nhật dấu check ngay khi thoát player về.
     @ObservedObject private var watchedService = StremioWatchedService.shared
 
+    /// 4 màu góc trích từ poster để dựng gradient nền (Stremio không có UltraBlurColors như Plex).
+    @StateObject private var cornerColors = PosterCornerColorsModel()
+
     @State private var metaDetail: StremioMetaDetail?
     @State private var screenWidth: CGFloat = 1920
 
@@ -90,6 +93,7 @@ struct StremioMovieDetailView: View {
     var body: some View {
         detailContent
             .onAppear {
+                cornerColors.load(urlString: item.poster)
                 loadMetaDetail()
                 // Quay lại từ VideoPlayerView không gọi lại luồng lấy stream nữa — giữ nguyên kết quả cũ.
                 guard !hasPreparedStreams else { return }
@@ -100,7 +104,14 @@ struct StremioMovieDetailView: View {
 
     private var detailContent: some View {
         ZStack(alignment: .topLeading) {
-            Color("BackgroundColor").ignoresSafeArea()
+            Group {
+                if cornerColors.colors.count == 4 {
+                    CornerGradientBackground(colors: cornerColors.colors)
+                } else {
+                    Color("BackgroundColor")
+                }
+            }
+            .ignoresSafeArea()
 
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
