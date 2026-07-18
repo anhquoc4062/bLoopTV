@@ -1,0 +1,7 @@
+# Secrets — không commit key/token thật lên git.
+# Copy Secrets.example.plist -> bLoopTV/Secrets.plist rồi điền giá trị thật.
+bLoopTV/Secrets.plist
+
+# Xcode user-specific
+*.xcuserstate
+xcuserdata/

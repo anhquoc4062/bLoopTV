@@ -542,7 +542,13 @@ struct StremioMovieDetailView: View {
     // MARK: - Làm giàu bằng TMDB (tiếng Việt + cast + gợi ý)
 
     private func enrichFromTMDBIfNeeded() {
-        guard !hasEnrichedTMDB, TMDBAPI.shared.isConfigured else { return }
+        guard !hasEnrichedTMDB else { return }
+        guard TMDBAPI.shared.isConfigured else {
+            // Thường gặp nhất khi Secrets.plist chưa được nhét vào bundle (build incremental cũ) → Clean
+            // Build Folder (Shift+Cmd+K) rồi build lại.
+            print("[TMDB] chưa cấu hình API key (Secrets.plist rỗng hoặc chưa vào bundle) — bỏ qua làm giàu")
+            return
+        }
         hasEnrichedTMDB = true
 
         // item.id có thể kèm season/episode ("tt123:1:2") — chỉ lấy IMDb id trần cho TMDB.

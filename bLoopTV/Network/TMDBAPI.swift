@@ -12,16 +12,14 @@ final class TMDBAPI {
     static let shared = TMDBAPI()
     private init() {}
 
-    // ⚠️ ĐIỀN API KEY TMDB (v3) CỦA BẠN VÀO ĐÂY rồi build lại. Không có key thì phần làm giàu tự bỏ qua,
-    // trang detail Stremio vẫn chạy bình thường như cũ.
-    private let apiKey = "REPLACE_WITH_YOUR_TMDB_API_KEY"
+    // Key đọc từ Secrets.plist (gitignore) — xem bLoopTV/Secrets.example.plist. Không có key thì phần làm
+    // giàu tự bỏ qua, trang detail Stremio vẫn chạy bình thường như cũ.
+    private var apiKey: String { AppSecrets.tmdbAPIKey }
 
     private let language = "vi-VN"
     private let host = "https://api.themoviedb.org/3"
 
-    var isConfigured: Bool {
-        !apiKey.isEmpty && apiKey != "REPLACE_WITH_YOUR_TMDB_API_KEY"
-    }
+    var isConfigured: Bool { !apiKey.isEmpty }
 
     private func makeURL(_ path: String, extraQuery: [URLQueryItem] = []) -> URL? {
         var comps = URLComponents(string: host + path)
