@@ -15,7 +15,7 @@ extension StremioMeta {
     /// Chuyển 1 lần lúc dựng danh sách, đừng gọi trong body của view: placeholder dựng qua JSON decode
     /// nên gọi lại mỗi lần render sẽ tốn vô ích.
     var asPlexMetaData: PlexMetaData {
-        PlexMetaData.placeholder(id: id, title: name, poster: poster, type: type)
+        PlexMetaData.placeholder(id: id, title: name, poster: poster, background: background, type: type)
     }
 
     /// Dòng phụ dưới tên thẻ. StremioMeta không có năm/số mùa/số tập như Plex nên chỉ hiện loại nội dung.

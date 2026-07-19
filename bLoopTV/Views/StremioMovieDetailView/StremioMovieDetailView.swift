@@ -661,7 +661,7 @@ struct StremioMovieDetailView: View {
         }
         let streamForPlayback = StremioStream(url: option.stream.url, title: option.stream.title, name: option.stream.name, subtitles: mergedSubtitles)
 
-        let streamItem = StremioMeta(id: resolvedStreamId, type: item.type, name: item.name, poster: item.poster)
+        let streamItem = StremioMeta(id: resolvedStreamId, type: item.type, name: item.name, poster: item.poster, background: item.background)
         // Ảnh ngang cho lớp che khi load: ưu tiên still của tập → background phim → cuối cùng mới poster dọc.
         let coverImage = metaDetail?.background ?? item.poster
         guard let playbackData = StremioPlaybackConverter.buildPlaybackData(
