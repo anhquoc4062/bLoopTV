@@ -139,9 +139,6 @@ struct StremioAccountHomeView: View {
             return
         }
 
-        // Continue Watching load riêng, bất đồng bộ, không chờ/chặn các mục Watchly bên dưới.
-        refreshContinueWatching()
-
         isLoadingCatalogs = true
         errorMessage = nil
 
@@ -154,6 +151,10 @@ struct StremioAccountHomeView: View {
                 await MainActor.run {
                     self.addons = addons
                 }
+
+                // Continue Watching cần base URL của addon để tra ảnh nền (library không trả background),
+                // nên phải chạy SAU khi có addons — không load sớm như trước nữa.
+                refreshContinueWatching()
 
                 // Home chỉ lấy các mục của addon Watchly (không loop hết catalog mọi addon như trước).
                 guard let watchly = addons.watchly else {
@@ -204,8 +205,9 @@ struct StremioAccountHomeView: View {
     /// Làm mới riêng mục "Xem Tiếp" — gọi lúc vào home lần đầu và mỗi lần quay lại từ detail (tiến độ đã đổi).
     private func refreshContinueWatching() {
         guard let authKey = StremioAccountAPI.shared.authKey else { return }
+        let addons = self.addons
         Task {
-            let row = await fetchContinueWatchingRow(authKey: authKey)
+            let row = await fetchContinueWatchingRow(authKey: authKey, addons: addons)
             await MainActor.run {
                 rows.removeAll { $0.id == Self.continueWatchingRowId }
                 if let row { rows.insert(row, at: 0) }
@@ -213,7 +215,31 @@ struct StremioAccountHomeView: View {
         }
     }
 
-    private func fetchContinueWatchingRow(authKey: String) async -> StremioAccountCatalogRow? {
+    /// Tra ảnh nền (background) cho item Xem Tiếp — library KHÔNG lưu background, phải hỏi /meta từng item
+    /// (giống app Stremio). Chạy song song, lấy addon đầu tiên có background. Thiếu thì thẻ tự lùi về poster.
+    private func fetchBackgrounds(for items: [StremioLibraryItem], baseURLs: [String]) async -> [String: String] {
+        guard !baseURLs.isEmpty else { return [:] }
+        return await withTaskGroup(of: (String, String?).self) { group in
+            for item in items {
+                group.addTask {
+                    for base in baseURLs {
+                        if let detail = try? await StremioAPI.shared.fetchMetaDetail(baseURL: base, type: item.type, id: item.id),
+                           let bg = detail.background, !bg.isEmpty {
+                            return (item.id, bg)
+                        }
+                    }
+                    return (item.id, nil)
+                }
+            }
+            var result: [String: String] = [:]
+            for await (id, bg) in group {
+                if let bg { result[id] = bg }
+            }
+            return result
+        }
+    }
+
+    private func fetchContinueWatchingRow(authKey: String, addons: [StremioInstalledAddon]) async -> StremioAccountCatalogRow? {
         do {
             let items = try await StremioAccountAPI.shared.fetchLibraryItems(authKey: authKey)
             print("[Stremio] Library có \(items.count) item")
@@ -227,21 +253,25 @@ struct StremioAccountHomeView: View {
             print("[Stremio] Continue Watching: \(inProgress.count) item")
             guard !inProgress.isEmpty else { return nil }
 
-            let metas = inProgress.map { libItem -> StremioMeta in
+            // Giới hạn 20 cho nhẹ, tra ảnh nền song song từ /meta.
+            let visibleItems = Array(inProgress.prefix(20))
+            let backgrounds = await fetchBackgrounds(for: visibleItems, baseURLs: addons.metaOrderedBaseURLs)
+
+            let metas = visibleItems.map { libItem -> StremioMeta in
                 // Luôn dùng "_id" (id cả series/phim), KHÔNG dùng video_id — vì id kèm season/episode
                 // sẽ khiến trang detail gọi /meta sai (chỉ nhận id series trần) và bấm vô chỉ vào đúng
                 // 1 tập chứ không phải cả series. StremioMovieDetailView đã tự tra video_id trong library
                 // để resume đúng tập, không cần truyền qua đây.
-                StremioMeta(id: libItem.id, type: libItem.type, name: libItem.name, poster: libItem.poster, background: libItem.background)
+                StremioMeta(id: libItem.id, type: libItem.type, name: libItem.name, poster: libItem.poster, background: backgrounds[libItem.id])
             }
 
-            // Kèm viewOffset/duration (cùng đơn vị nên tỉ lệ đúng) để thẻ landscape hiện thanh progress.
-            let metadatas = inProgress.map { libItem -> PlexMetaData in
+            // Kèm background (ảnh ngang) + viewOffset/duration để thẻ landscape có ảnh ngang + thanh progress.
+            let metadatas = visibleItems.map { libItem -> PlexMetaData in
                 PlexMetaData.placeholder(
                     id: libItem.id,
                     title: libItem.name,
                     poster: libItem.poster,
-                    background: libItem.background,
+                    background: backgrounds[libItem.id],
                     type: libItem.type,
                     viewOffset: Int(libItem.state?.timeOffset ?? 0),
                     duration: Int(libItem.state?.duration ?? 0)

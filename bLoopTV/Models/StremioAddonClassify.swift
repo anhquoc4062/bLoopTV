@@ -31,6 +31,18 @@ extension Array where Element == StremioInstalledAddon {
     var watchly: StremioInstalledAddon? { first { $0.isWatchly } }
     var tmdb: StremioInstalledAddon? { first { $0.isTMDB } }
     var cinemeta: StremioInstalledAddon? { first { $0.isCinemeta } }
+
+    /// Base URL xếp theo thứ tự ưu tiên lấy /meta: TMDB trước (tiếng Việt), Cinemeta sau, rồi tới addon
+    /// còn lại. Dùng khi tra ảnh nền cho Continue Watching (lấy addon đầu tiên có background).
+    var metaOrderedBaseURLs: [String] {
+        var ordered: [StremioInstalledAddon] = []
+        if let t = tmdb { ordered.append(t) }
+        if let c = cinemeta { ordered.append(c) }
+        for a in self where !ordered.contains(where: { $0.transportUrl == a.transportUrl }) {
+            ordered.append(a)
+        }
+        return ordered.map { $0.baseURL }
+    }
 }
 
 extension StremioCatalogDescriptor {
