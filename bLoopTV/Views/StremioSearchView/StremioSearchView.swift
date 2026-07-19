@@ -58,12 +58,15 @@ private final class StremioSearchViewModel: ObservableObject {
 
         $searchText
             .removeDuplicates()
-            .debounce(for: .milliseconds(1200), scheduler: RunLoop.main)
+            // tvOS không có tín hiệu "đang vuốt bàn phím" — chỉ biết khi text đổi. Nên chờ khá lâu sau ký
+            // tự cuối (2.5s, dài hơn thời gian vuốt-chọn 1 ký tự) mới coi là "đã gõ xong" rồi mới search,
+            // tránh mỗi ký tự trung gian lại bắn 1 lượt AI search.
+            .debounce(for: .milliseconds(2500), scheduler: RunLoop.main)
             .sink { [weak self] text in
                 guard let self else { return }
                 let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
 
-                if trimmed.count >= 2 {
+                if trimmed.count >= 3 {
                     self.search(trimmed)
                 } else if trimmed.isEmpty {
                     self.clear()
