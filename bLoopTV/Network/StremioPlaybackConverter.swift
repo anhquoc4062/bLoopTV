@@ -25,7 +25,8 @@ enum StremioPlaybackConverter {
         knownDurationMs: Int = 0,
         libraryItemId: String? = nil,
         existing: StremioLibraryItem? = nil,
-        coverImageUrl: String? = nil
+        coverImageUrl: String? = nil,
+        logoUrl: String? = nil
     ) -> PlaybackData? {
         guard let videoUrlString = stream.url else { return nil }
 
@@ -99,6 +100,7 @@ enum StremioPlaybackConverter {
             grandVideoID: 0,
             ratingKey: item.id,
             thumbnailUrl: coverImageUrl ?? item.asPlexMetaData.thumbnail ?? "",
+            logoUrl: logoUrl,
             mediaPartStreams: mediaStreams,
             currentIndex: 0,
             playlist: [],

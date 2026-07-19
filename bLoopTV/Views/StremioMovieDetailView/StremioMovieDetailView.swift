@@ -661,7 +661,8 @@ struct StremioMovieDetailView: View {
             knownDurationMs: knownDurationMs,
             libraryItemId: StremioAccountAPI.shared.authKey != nil ? libraryItemId : nil,
             existing: existingLibraryItem,
-            coverImageUrl: coverImage
+            coverImageUrl: coverImage,
+            logoUrl: metaDetail?.logo
         ) else {
             errorMessage = "Nguồn phát không hợp lệ"
             return

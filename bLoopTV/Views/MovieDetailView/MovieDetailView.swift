@@ -427,6 +427,7 @@ struct MovieDetailView: View {
                     grandVideoID: part.id,
                     ratingKey: selected.id,
                     thumbnailUrl: viewModel.localThumbnailURL?.absoluteString ?? "",
+                    logoUrl: viewModel.logoURL?.absoluteString,
                     mediaPartStreams: part.streams,
                     currentIndex: 0,
                     playlist: [],
