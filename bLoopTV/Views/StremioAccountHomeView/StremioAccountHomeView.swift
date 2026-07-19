@@ -39,7 +39,12 @@ struct StremioAccountHomeView: View {
     var body: some View {
         content
             .onAppear {
-                if rows.isEmpty && !isLoadingCatalogs { loadHome() }
+                if rows.isEmpty && !isLoadingCatalogs {
+                    loadHome()
+                } else {
+                    // Quay lại từ detail: nội dung home giữ nguyên, chỉ làm mới "Xem Tiếp" cho khớp tiến độ.
+                    refreshContinueWatching()
+                }
             }
     }
 
@@ -49,8 +54,8 @@ struct StremioAccountHomeView: View {
                 topBar
 
                 if rows.isEmpty && isLoadingCatalogs {
-                    ProgressView()
-                        .padding(.top, 40)
+                    LogoLoadingView()
+                        .padding(.top, 80)
                 }
 
                 if let errorMessage, rows.isEmpty {
@@ -126,15 +131,8 @@ struct StremioAccountHomeView: View {
             return
         }
 
-        // Continue Watching load riêng, bất đồng bộ, không chờ/chặn 2 mục Featured bên dưới.
-        Task {
-            if let row = await fetchContinueWatchingRow(authKey: authKey) {
-                await MainActor.run {
-                    rows.removeAll { $0.id == Self.continueWatchingRowId }
-                    rows.insert(row, at: 0)
-                }
-            }
-        }
+        // Continue Watching load riêng, bất đồng bộ, không chờ/chặn các mục Watchly bên dưới.
+        refreshContinueWatching()
 
         isLoadingCatalogs = true
         errorMessage = nil
@@ -191,6 +189,18 @@ struct StremioAccountHomeView: View {
                     errorMessage = error.localizedDescription
                     isLoadingCatalogs = false
                 }
+            }
+        }
+    }
+
+    /// Làm mới riêng mục "Xem Tiếp" — gọi lúc vào home lần đầu và mỗi lần quay lại từ detail (tiến độ đã đổi).
+    private func refreshContinueWatching() {
+        guard let authKey = StremioAccountAPI.shared.authKey else { return }
+        Task {
+            let row = await fetchContinueWatchingRow(authKey: authKey)
+            await MainActor.run {
+                rows.removeAll { $0.id == Self.continueWatchingRowId }
+                if let row { rows.insert(row, at: 0) }
             }
         }
     }
