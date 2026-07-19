@@ -325,8 +325,7 @@ struct VideoPlayerView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .clipped()
 
-                    OrangeSpinner()
-                        .frame(width: 60, height: 60)
+                    MovieLogoLoadingView(logoUrlString: playbackData.logoUrl)
                 }
                 .ignoresSafeArea()
                 .transition(.opacity)

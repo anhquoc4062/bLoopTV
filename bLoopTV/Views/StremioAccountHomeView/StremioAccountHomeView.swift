@@ -39,7 +39,12 @@ struct StremioAccountHomeView: View {
     var body: some View {
         content
             .onAppear {
-                if rows.isEmpty && !isLoadingCatalogs { loadHome() }
+                if rows.isEmpty && !isLoadingCatalogs {
+                    loadHome()
+                } else {
+                    // Quay lại từ detail: nội dung home giữ nguyên, chỉ làm mới "Xem Tiếp" cho khớp tiến độ.
+                    refreshContinueWatching()
+                }
             }
     }
 

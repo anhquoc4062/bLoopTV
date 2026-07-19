@@ -15,6 +15,9 @@ struct PlaybackData: Hashable, Equatable {
     let grandVideoID: Int
     let ratingKey: String
     let thumbnailUrl: String
+    /// Logo (clearLogo) của phim để hiện lúc loading trong player thay cho spinner. nil = không có logo,
+    /// player tự lùi về spinner cam.
+    var logoUrl: String? = nil
     let mediaPartStreams: [PlexMediaPartStream]
     let currentIndex: Int
     let playlist: [QueueItem]
