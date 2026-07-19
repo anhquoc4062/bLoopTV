@@ -31,8 +31,11 @@ struct MovieLogoLoadingView: View {
                     Color.clear
                 }
                 .frame(maxWidth: 440, maxHeight: 220)
-                .scaleEffect(animating ? 1.0 : 0.9)
-                .opacity(animating ? 1.0 : 0.5)
+                // Logo clearLogo thường là chữ TRẮNG nền trong suốt, đè lên thumbnail sáng dễ chìm — thêm
+                // shadow đen cho luôn nổi rõ. Nhịp thở nhẹ, sàn opacity 0.7 (0.5 nhìn như ẩn).
+                .shadow(color: .black.opacity(0.7), radius: 14, x: 0, y: 2)
+                .scaleEffect(animating ? 1.0 : 0.94)
+                .opacity(animating ? 1.0 : 0.7)
                 .animation(.easeInOut(duration: 0.85).repeatForever(autoreverses: true), value: animating)
                 .onAppear { animating = true }
             } else {
