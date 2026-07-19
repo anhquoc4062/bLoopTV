@@ -27,7 +27,8 @@ struct MovieLogoLoadingView: View {
                         .resizable()
                         .scaledToFit()
                 } placeholder: {
-                    OrangeSpinner().frame(width: 60, height: 60)
+                    // KHÔNG spinner ở đây — có logo thì chỉ hiện logo (đang tải thì để trống, khỏi lòi spinner).
+                    Color.clear
                 }
                 .frame(maxWidth: 360, maxHeight: 180)
                 .scaleEffect(animating ? 1.0 : 0.9)
