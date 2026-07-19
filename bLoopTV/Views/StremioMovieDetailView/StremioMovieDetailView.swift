@@ -44,6 +44,8 @@ struct StremioMovieDetailView: View {
 
     /// Meta chính đã về từ TMDB chưa — để Cinemeta (placeholder) không ghi đè lên bản TMDB.
     @State private var hasPrimaryMeta = false
+    /// Meta Cinemeta giữ riêng để lấp overview từng tập khi addon TMDB không trả (dù hero dùng bản TMDB).
+    @State private var cinemetaMeta: StremioMetaDetail?
 
     /// Đánh dấu đã xem lưu local — @ObservedObject để thẻ tập tự cập nhật dấu check ngay khi thoát player về.
     @ObservedObject private var watchedService = StremioWatchedService.shared
@@ -419,7 +421,7 @@ struct StremioMovieDetailView: View {
                     .frame(width: cardWidth, alignment: .leading)
             }
 
-            if let overview = video.overview, !overview.isEmpty {
+            if let overview = episodeOverview(video) {
                 Text(overview)
                     .font(.system(size: 24))
                     .foregroundStyle(.secondary)
@@ -427,6 +429,13 @@ struct StremioMovieDetailView: View {
                     .frame(width: cardWidth, alignment: .leading)
             }
         }
+    }
+
+    /// Overview của tập: ưu tiên bản đang dùng (thường TMDB), thiếu thì lấy của Cinemeta cho tập cùng id.
+    private func episodeOverview(_ video: StremioVideoEntry) -> String? {
+        if let o = video.overview, !o.isEmpty { return o }
+        if let o = cinemetaMeta?.videos?.first(where: { $0.id == video.id })?.overview, !o.isEmpty { return o }
+        return nil
     }
 
     private func episodes(forSeason season: Int) -> [StremioVideoEntry] {
@@ -505,6 +514,7 @@ struct StremioMovieDetailView: View {
             Task {
                 guard let detail = try? await StremioAPI.shared.fetchMetaDetail(baseURL: cinemetaBase, type: item.type, id: item.id) else { return }
                 await MainActor.run {
+                    cinemetaMeta = detail // luôn giữ để fallback overview từng tập, kể cả khi hero dùng TMDB
                     guard !hasPrimaryMeta else { return }
                     applyMeta(detail)
                 }

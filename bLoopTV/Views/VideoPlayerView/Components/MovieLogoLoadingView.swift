@@ -30,9 +30,9 @@ struct MovieLogoLoadingView: View {
                     // KHÔNG spinner ở đây — có logo thì chỉ hiện logo (đang tải thì để trống, khỏi lòi spinner).
                     Color.clear
                 }
-                .frame(maxWidth: 360, maxHeight: 180)
+                .frame(maxWidth: 440, maxHeight: 220)
                 .scaleEffect(animating ? 1.0 : 0.9)
-                .opacity(animating ? 1.0 : 0.55)
+                .opacity(animating ? 1.0 : 0.5)
                 .animation(.easeInOut(duration: 0.85).repeatForever(autoreverses: true), value: animating)
                 .onAppear { animating = true }
             } else {
