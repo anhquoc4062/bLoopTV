@@ -54,8 +54,8 @@ struct StremioAccountHomeView: View {
                 topBar
 
                 if rows.isEmpty && isLoadingCatalogs {
-                    ProgressView()
-                        .padding(.top, 40)
+                    LogoLoadingView()
+                        .padding(.top, 80)
                 }
 
                 if let errorMessage, rows.isEmpty {

@@ -100,6 +100,12 @@ struct HomeView: View {
                 .padding(.top, -30)
             }
         }.edgesIgnoringSafeArea(.top)
+        .overlay {
+            // Đang tải lần đầu (chưa có banner lẫn thư viện) → hiện logo loading thay cho màn trống.
+            if homeViewModel.featuredMetadata.isEmpty && homeViewModel.libraries.isEmpty {
+                LogoLoadingView()
+            }
+        }
         .background(Color("BackgroundColor"))
         .onAppear {
             if focusedArea == nil { focusedArea = .movieGrid }
