@@ -43,18 +43,17 @@ struct ContentView: View {
         guard let source = value("source"), let id = value("id") else { return }
         let title = value("title") ?? ""
         let poster = value("poster")
-        let background = value("background")
         let type = value("type") ?? ""
 
         switch source {
         case "plex":
             let guid = value("guid")
             let art = value("art")
-            let metadata = PlexMetaData.placeholder(id: id, title: title, poster: poster, background: "", type: type, guid: guid, art: art)
+            let metadata = PlexMetaData.placeholder(id: id, title: title, poster: poster, type: type, guid: guid, art: art)
             navPathManager.push(.movieDetail(metadata: metadata, isDiscover: false))
 
         case "stremio":
-            let item = StremioMeta(id: id, type: type, name: title, poster: poster, background: background)
+            let item = StremioMeta(id: id, type: type, name: title, poster: poster)
             Task {
                 guard let authKey = StremioAccountAPI.shared.authKey,
                       let addons = try? await StremioAccountAPI.shared.fetchAddonCollection(authKey: authKey) else { return }
