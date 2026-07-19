@@ -20,6 +20,14 @@ private struct StremioAccountCatalogRow: Identifiable {
         self.metadatas = items.map { $0.asPlexMetaData }
     }
 
+    /// Dùng cho Continue Watching: metadatas dựng sẵn kèm viewOffset/duration để có thanh progress.
+    init(id: String, title: String, items: [StremioMeta], metadatas: [PlexMetaData]) {
+        self.id = id
+        self.title = title
+        self.items = items
+        self.metadatas = metadatas
+    }
+
     /// Tìm ngược item Stremio gốc từ thẻ được bấm (PlexMetaData.id giữ nguyên id Stremio).
     func item(forMetadataId id: String) -> StremioMeta? {
         items.first { $0.id == id }
@@ -68,7 +76,7 @@ struct StremioAccountHomeView: View {
                         sectionTitle: row.title,
                         hubKey: row.id,
                         metadatas: row.metadatas,
-                        isLandscapeSection: false,
+                        isLandscapeSection: row.id == Self.continueWatchingRowId ? true : false,
                         isDiscover: false,
                         onSelectItem: { metadata in
                             guard let item = row.item(forMetadataId: metadata.id) else { return }
@@ -224,12 +232,25 @@ struct StremioAccountHomeView: View {
                 // sẽ khiến trang detail gọi /meta sai (chỉ nhận id series trần) và bấm vô chỉ vào đúng
                 // 1 tập chứ không phải cả series. StremioMovieDetailView đã tự tra video_id trong library
                 // để resume đúng tập, không cần truyền qua đây.
-                StremioMeta(id: libItem.id, type: libItem.type, name: libItem.name, poster: libItem.poster)
+                StremioMeta(id: libItem.id, type: libItem.type, name: libItem.name, poster: libItem.poster, background: libItem.background)
+            }
+
+            // Kèm viewOffset/duration (cùng đơn vị nên tỉ lệ đúng) để thẻ landscape hiện thanh progress.
+            let metadatas = inProgress.map { libItem -> PlexMetaData in
+                PlexMetaData.placeholder(
+                    id: libItem.id,
+                    title: libItem.name,
+                    poster: libItem.poster,
+                    background: libItem.background,
+                    type: libItem.type,
+                    viewOffset: Int(libItem.state?.timeOffset ?? 0),
+                    duration: Int(libItem.state?.duration ?? 0)
+                )
             }
 
             syncContinueWatchingToTopShelf(metas)
 
-            return StremioAccountCatalogRow(id: Self.continueWatchingRowId, title: "Xem Tiếp", items: metas)
+            return StremioAccountCatalogRow(id: Self.continueWatchingRowId, title: "Xem Tiếp", items: metas, metadatas: metadatas)
         } catch {
             print("[Stremio] Lỗi lấy Continue Watching: \(error)")
             return nil

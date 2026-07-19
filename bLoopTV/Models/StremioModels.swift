@@ -45,6 +45,7 @@ struct StremioMeta: Decodable, Identifiable, Hashable {
     let type: String
     let name: String
     let poster: String?
+    let background: String?
 }
 
 struct StremioCatalogResponse: Decodable {
@@ -152,6 +153,7 @@ struct StremioLibraryItem: Decodable, Identifiable, Hashable {
     let name: String
     let type: String
     let poster: String?
+    let background: String?
     let removed: Bool?
     let temp: Bool?
     let ctime: String?
@@ -160,7 +162,7 @@ struct StremioLibraryItem: Decodable, Identifiable, Hashable {
     enum CodingKeys: String, CodingKey {
         case id = "_id"
         case ctime = "_ctime"
-        case name, type, poster, removed, temp, state
+        case name, type, poster, background, removed, temp, state
     }
 }
 
