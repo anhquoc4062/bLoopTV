@@ -31,13 +31,17 @@ struct MovieLogoLoadingView: View {
                     Color.clear
                 }
                 .frame(maxWidth: 440, maxHeight: 220)
-                // Logo clearLogo thường là chữ TRẮNG nền trong suốt, đè lên thumbnail sáng dễ chìm — thêm
-                // shadow đen cho luôn nổi rõ. Nhịp thở nhẹ, sàn opacity 0.7 (0.5 nhìn như ẩn).
+                // Logo clearLogo thường là chữ TRẮNG nền trong suốt — thêm shadow đen cho nổi trên thumbnail.
                 .shadow(color: .black.opacity(0.7), radius: 14, x: 0, y: 2)
-                .scaleEffect(animating ? 1.0 : 0.94)
-                .opacity(animating ? 1.0 : 0.7)
-                .animation(.easeInOut(duration: 0.85).repeatForever(autoreverses: true), value: animating)
-                .onAppear { animating = true }
+                .scaleEffect(animating ? 1.0 : 0.8)
+                .opacity(animating ? 1.0 : 0.4)
+                // Dùng withAnimation trong onAppear (không dùng .animation(value:) vì kiểu đó + repeatForever
+                // hay lỗi khiến opacity rơi về ~0 = mất logo, thay vì dừng ở sàn 0.4 như bên iOS).
+                .onAppear {
+                    withAnimation(.easeInOut(duration: 0.85).repeatForever(autoreverses: true)) {
+                        animating = true
+                    }
+                }
             } else {
                 OrangeSpinner().frame(width: 60, height: 60)
             }
