@@ -2,49 +2,121 @@
 //  MovieLogoLoadingView.swift
 //  bLoopTV
 //
-//  Lúc video đang tải trong player, hiện LOGO CỦA PHIM (clearLogo) nhịp thở — giống kiểu loading của
-//  Stremio. Không có logo thì lùi về spinner cam.
+//  Lúc video đang tải trong player, hiện LOGO CỦA PHIM (clearLogo) nhịp thở — giống bản iOS.
+//  Không có logo thì lùi về spinner cam.
+//
+//  Vì sao dựng bằng UIKit: nhịp thở làm bằng SwiftUI (.animation(value:) hoặc withAnimation kèm
+//  repeatForever) đều bị gián đoạn, opacity rơi về ~0 nên logo chớp mất ở đáy. UIView.animate với
+//  [.repeat, .autoreverse] chạy thẳng ở Core Animation, giữ alpha dao động đúng 0.4 <-> 1.0.
 //
 
 import SwiftUI
-import SDWebImageSwiftUI
+import UIKit
+import SDWebImage
 
-struct MovieLogoLoadingView: View {
-    let logoUrlString: String?
+final class MovieLogoLoadingUIView: UIView {
+    private let imageView = UIImageView()
+    private let spinner = OrangeSpinnerView(frame: CGRect(x: 0, y: 0, width: 60, height: 60))
+    private var isBreathing = false
 
-    @State private var animating = false
-
-    private var logoURL: URL? {
-        guard let s = logoUrlString, !s.isEmpty else { return nil }
-        return URL(string: s)
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        setupSubviews()
     }
 
-    var body: some View {
-        Group {
-            if let logoURL {
-                WebImage(url: logoURL, options: [.scaleDownLargeImages]) { image in
-                    image
-                        .resizable()
-                        .scaledToFit()
-                } placeholder: {
-                    // KHÔNG spinner ở đây — có logo thì chỉ hiện logo (đang tải thì để trống, khỏi lòi spinner).
-                    Color.clear
-                }
-                .frame(maxWidth: 440, maxHeight: 220)
-                // Logo clearLogo thường là chữ TRẮNG nền trong suốt — thêm shadow đen cho nổi trên thumbnail.
-                .shadow(color: .black.opacity(0.7), radius: 14, x: 0, y: 2)
-                .scaleEffect(animating ? 1.0 : 0.8)
-                .opacity(animating ? 1.0 : 0.4)
-                // Dùng withAnimation trong onAppear (không dùng .animation(value:) vì kiểu đó + repeatForever
-                // hay lỗi khiến opacity rơi về ~0 = mất logo, thay vì dừng ở sàn 0.4 như bên iOS).
-                .onAppear {
-                    withAnimation(.easeInOut(duration: 0.85).repeatForever(autoreverses: true)) {
-                        animating = true
-                    }
-                }
+    required init?(coder: NSCoder) { fatalError("init(coder:) chưa dùng tới") }
+
+    private func setupSubviews() {
+        imageView.contentMode = .scaleAspectFit
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        imageView.isHidden = true
+        // Shadow bám theo alpha của logo (clearLogo là PNG nền trong suốt) nên logo trắng vẫn nổi
+        // trên thumbnail sáng.
+        imageView.layer.shadowColor = UIColor.black.cgColor
+        imageView.layer.shadowOpacity = 0.7
+        imageView.layer.shadowRadius = 14
+        imageView.layer.shadowOffset = CGSize(width: 0, height: 2)
+        addSubview(imageView)
+
+        spinner.translatesAutoresizingMaskIntoConstraints = false
+        spinner.isHidden = true
+        addSubview(spinner)
+
+        NSLayoutConstraint.activate([
+            imageView.centerXAnchor.constraint(equalTo: centerXAnchor),
+            imageView.centerYAnchor.constraint(equalTo: centerYAnchor),
+            imageView.widthAnchor.constraint(equalToConstant: 440),
+            imageView.heightAnchor.constraint(equalToConstant: 220),
+
+            spinner.centerXAnchor.constraint(equalTo: centerXAnchor),
+            spinner.centerYAnchor.constraint(equalTo: centerYAnchor),
+            spinner.widthAnchor.constraint(equalToConstant: 60),
+            spinner.heightAnchor.constraint(equalToConstant: 60)
+        ])
+    }
+
+    func configure(logoUrlString: String?) {
+        guard let urlString = logoUrlString, !urlString.isEmpty, let url = URL(string: urlString) else {
+            showSpinner()
+            return
+        }
+
+        imageView.sd_setImage(with: url, placeholderImage: nil, options: [.scaleDownLargeImages]) { [weak self] image, _, _, _ in
+            guard let self else { return }
+            if image != nil {
+                self.showLogo()
             } else {
-                OrangeSpinner().frame(width: 60, height: 60)
+                // Không tải được logo thì vẫn phải có gì đó báo đang tải.
+                self.showSpinner()
             }
         }
+    }
+
+    private func showLogo() {
+        spinner.stopAnimating()
+        spinner.isHidden = true
+        imageView.isHidden = false
+        startLogoBreathing()
+    }
+
+    private func showSpinner() {
+        imageView.isHidden = true
+        spinner.isHidden = false
+        spinner.startAnimating()
+    }
+
+    private func startLogoBreathing() {
+        guard !isBreathing else { return }
+        isBreathing = true
+        imageView.alpha = 0.4
+        imageView.transform = CGAffineTransform(scaleX: 0.8, y: 0.8)
+        UIView.animate(withDuration: 0.85, delay: 0,
+                       options: [.repeat, .autoreverse, .curveEaseInOut, .allowUserInteraction]) {
+            self.imageView.alpha = 1.0
+            self.imageView.transform = .identity
+        }
+    }
+
+    func stopLogoBreathing() {
+        isBreathing = false
+        imageView.layer.removeAllAnimations()
+        imageView.transform = .identity
+        imageView.alpha = 1.0
+    }
+}
+
+struct MovieLogoLoadingView: UIViewRepresentable {
+    let logoUrlString: String?
+
+    func makeUIView(context: Context) -> MovieLogoLoadingUIView {
+        let view = MovieLogoLoadingUIView()
+        view.configure(logoUrlString: logoUrlString)
+        return view
+    }
+
+    func updateUIView(_ uiView: MovieLogoLoadingUIView, context: Context) {}
+
+    static func dismantleUIView(_ uiView: MovieLogoLoadingUIView, coordinator: ()) {
+        uiView.stopLogoBreathing()
     }
 }
