@@ -104,10 +104,14 @@ struct StremioMovieDetailView: View {
             .onAppear {
                 cornerColors.load(urlString: item.poster)
                 loadMetaDetail()
-                // Quay lại từ VideoPlayerView không gọi lại luồng lấy stream nữa — giữ nguyên kết quả cũ.
-                guard !hasPreparedStreams else { return }
-                hasPreparedStreams = true
-                prepareStreamOptions()
+                if hasPreparedStreams {
+                    // Quay lại từ player: KHÔNG lấy lại danh sách nguồn, nhưng phải đọc lại tiến độ mới để
+                    // bấm Phát lần nữa resume đúng chỗ vừa tua (trước đây giữ offset cũ nên phát lại từ đầu).
+                    refreshResumePosition()
+                } else {
+                    hasPreparedStreams = true
+                    prepareStreamOptions()
+                }
             }
     }
 
@@ -557,6 +561,25 @@ struct StremioMovieDetailView: View {
     }
 
     // MARK: - Chuẩn bị vị trí resume + danh sách nguồn phát để chọn khi bấm Phát
+
+    /// Đọc lại tiến độ resume từ library cho stream ĐANG chọn — gọi khi quay lại từ player (tiến độ vừa
+    /// xem/tua đã lưu lên server). Chỉ cập nhật offset/duration, không đụng danh sách nguồn.
+    private func refreshResumePosition() {
+        guard !libraryItemId.isEmpty, let authKey = StremioAccountAPI.shared.authKey else { return }
+        Task {
+            guard let items = try? await StremioAccountAPI.shared.fetchLibraryItems(authKey: authKey),
+                  let existing = items.first(where: { $0.id == libraryItemId }) else { return }
+            await MainActor.run {
+                existingLibraryItem = existing
+                // Chỉ resume khi state đang trỏ đúng stream hiện tại (tập vừa xem, hoặc phim lẻ). Nếu vừa
+                // nhảy sang tập kế (advance) thì stateVideoId khác resolvedStreamId → giữ offset 0 cho tập mới.
+                if item.type == "movie" || existing.state?.videoId == resolvedStreamId {
+                    resumeOffsetMs = Int(existing.state?.timeOffset ?? 0)
+                    knownDurationMs = Int(existing.state?.duration ?? 0)
+                }
+            }
+        }
+    }
 
     private func prepareStreamOptions() {
         Task {

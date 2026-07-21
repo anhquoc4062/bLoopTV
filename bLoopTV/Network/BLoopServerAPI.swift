@@ -85,7 +85,7 @@ final class BLoopServerAPI {
 
     /// Cho phép đổi lúc chạy (vd màn cài đặt sau này) mà không cần build lại.
     static let baseURLDefaultsKey = "BLoopServerBaseURL"
-    private static let fallbackBaseURL = "http://127.0.0.1:7788"
+    private static let fallbackBaseURL = "http://bloopserver.online:7788"
 
     /// Thứ tự ưu tiên: UserDefaults (đổi lúc chạy) -> Secrets.plist -> mặc định 127.0.0.1:7788.
     var baseURL: String {
