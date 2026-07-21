@@ -256,7 +256,9 @@ struct StremioMovieDetailView: View {
                 play(with: onlyOption)
             } label: {
                 playButtonLabelContent
+                    .padding(.vertical, 18)
             }
+            .frame(height: 80)
             .buttonStyle(.plain)
             .background(Color("VArtThemeColor"), in: RoundedRectangle(cornerRadius: 14))
             .hoverEffect()
@@ -274,6 +276,7 @@ struct StremioMovieDetailView: View {
             } label: {
                 playButtonLabelContent
             }
+            .frame(height: 80)
             .menuStyle(.button)
             .buttonStyle(.plain)
             .background(Color("VArtThemeColor"), in: RoundedRectangle(cornerRadius: 14))
@@ -300,7 +303,7 @@ struct StremioMovieDetailView: View {
                 .foregroundStyle(Color("ButtonText"))
         }
         .padding(.horizontal, 36)
-        .padding(.vertical, 18)
+        .frame(height: 80)
     }
 
     private var playLabel: String {
