@@ -85,8 +85,17 @@ final class MovieLogoLoadingUIView: UIView {
         spinner.startAnimating()
     }
 
+    // Ảnh cache có thể load xong TRƯỚC khi view vào window; UIView.animate lúc chưa ở trong window bị bỏ,
+    // nên phải thử lại khi view thực sự vào hierarchy.
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        startLogoBreathing()
+    }
+
     private func startLogoBreathing() {
-        guard !isBreathing else { return }
+        // Chỉ bắt đầu khi ĐÃ ở trong window và ảnh đã hiện — animate lúc chưa ở window sẽ không chạy mà
+        // vẫn khoá isBreathing khiến logo đứng im.
+        guard !isBreathing, window != nil, !imageView.isHidden else { return }
         isBreathing = true
         imageView.alpha = 0.4
         imageView.transform = CGAffineTransform(scaleX: 0.8, y: 0.8)

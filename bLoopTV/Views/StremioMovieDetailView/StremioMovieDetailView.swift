@@ -11,9 +11,14 @@ private struct StremioStreamOption: Identifiable {
     let id = UUID()
     let addonBase: String
     let stream: StremioStream
+    /// Có giá trị khi nguồn đến từ bLoopServer — giữ sid để phát đúng file và hiện nhãn giàu thông tin.
+    var bloop: BLoopStream? = nil
+
+    var isFromBLoop: Bool { bloop != nil }
 
     var label: String {
-        stream.title ?? stream.name ?? "Nguồn phát"
+        if let bloop { return bloop.displayLabel }
+        return stream.title ?? stream.name ?? "Nguồn phát"
     }
 
     /// Vài addon trộn cả link phụ đề rời vào chung /stream — loại các link đuôi phụ đề khỏi danh sách phát.
@@ -91,16 +96,22 @@ struct StremioMovieDetailView: View {
     @State private var userPickedEpisode = false
     /// Đổi mỗi lần bắt đầu 1 lượt lấy nguồn phát — kết quả của lượt cũ (đổi tập khi đang tải) bị bỏ qua.
     @State private var streamFetchToken = UUID()
+    /// Ghi chú riêng khi bLoopServer lỗi — chỉ báo nhẹ, không chặn nguồn Stremio.
+    @State private var bloopNotice: String?
 
     var body: some View {
         detailContent
             .onAppear {
                 cornerColors.load(urlString: item.poster)
                 loadMetaDetail()
-                // Quay lại từ VideoPlayerView không gọi lại luồng lấy stream nữa — giữ nguyên kết quả cũ.
-                guard !hasPreparedStreams else { return }
-                hasPreparedStreams = true
-                prepareStreamOptions()
+                if hasPreparedStreams {
+                    // Quay lại từ player: KHÔNG lấy lại danh sách nguồn, nhưng phải đọc lại tiến độ mới để
+                    // bấm Phát lần nữa resume đúng chỗ vừa tua (trước đây giữ offset cũ nên phát lại từ đầu).
+                    refreshResumePosition()
+                } else {
+                    hasPreparedStreams = true
+                    prepareStreamOptions()
+                }
             }
     }
 
@@ -157,6 +168,13 @@ struct StremioMovieDetailView: View {
                 if let errorMessage {
                     Text(errorMessage)
                         .foregroundColor(.red)
+                }
+
+                // bLoopServer lỗi thì chỉ báo nhẹ — nguồn Stremio bên dưới vẫn dùng bình thường.
+                if let bloopNotice {
+                    Text(bloopNotice)
+                        .font(.system(size: 20))
+                        .foregroundStyle(.orange.opacity(0.9))
                 }
 
                 actionButtons
@@ -238,7 +256,9 @@ struct StremioMovieDetailView: View {
                 play(with: onlyOption)
             } label: {
                 playButtonLabelContent
+                    .padding(.vertical, 18)
             }
+            .frame(height: 80)
             .buttonStyle(.plain)
             .background(Color("VArtThemeColor"), in: RoundedRectangle(cornerRadius: 14))
             .hoverEffect()
@@ -256,6 +276,7 @@ struct StremioMovieDetailView: View {
             } label: {
                 playButtonLabelContent
             }
+            .frame(height: 80)
             .menuStyle(.button)
             .buttonStyle(.plain)
             .background(Color("VArtThemeColor"), in: RoundedRectangle(cornerRadius: 14))
@@ -282,7 +303,7 @@ struct StremioMovieDetailView: View {
                 .foregroundStyle(Color("ButtonText"))
         }
         .padding(.horizontal, 36)
-        .padding(.vertical, 18)
+        .frame(height: 80)
     }
 
     private var playLabel: String {
@@ -544,6 +565,25 @@ struct StremioMovieDetailView: View {
 
     // MARK: - Chuẩn bị vị trí resume + danh sách nguồn phát để chọn khi bấm Phát
 
+    /// Đọc lại tiến độ resume từ library cho stream ĐANG chọn — gọi khi quay lại từ player (tiến độ vừa
+    /// xem/tua đã lưu lên server). Chỉ cập nhật offset/duration, không đụng danh sách nguồn.
+    private func refreshResumePosition() {
+        guard !libraryItemId.isEmpty, let authKey = StremioAccountAPI.shared.authKey else { return }
+        Task {
+            guard let items = try? await StremioAccountAPI.shared.fetchLibraryItems(authKey: authKey),
+                  let existing = items.first(where: { $0.id == libraryItemId }) else { return }
+            await MainActor.run {
+                existingLibraryItem = existing
+                // Chỉ resume khi state đang trỏ đúng stream hiện tại (tập vừa xem, hoặc phim lẻ). Nếu vừa
+                // nhảy sang tập kế (advance) thì stateVideoId khác resolvedStreamId → giữ offset 0 cho tập mới.
+                if item.type == "movie" || existing.state?.videoId == resolvedStreamId {
+                    resumeOffsetMs = Int(existing.state?.timeOffset ?? 0)
+                    knownDurationMs = Int(existing.state?.duration ?? 0)
+                }
+            }
+        }
+    }
+
     private func prepareStreamOptions() {
         Task {
             let resolvedLibraryItemId = item.id.split(separator: ":").first.map(String.init) ?? item.id
@@ -598,9 +638,59 @@ struct StremioMovieDetailView: View {
         streamOptions = []
         extraSubtitleStreams = []
         errorMessage = nil
+        bloopNotice = nil
 
         let type = item.type
         let bases = addonBaseURLs
+
+        // bLoopServer: nguồn riêng (addon Drive nằm ở tài khoản chủ), luôn xếp TRƯỚC nguồn Stremio.
+        // Chạy song song với addon, lỗi bên này không được làm hỏng danh sách bên kia.
+        if let authKey = StremioAccountAPI.shared.authKey {
+            Task {
+                do {
+                    let response = try await BLoopServerAPI.shared.fetchStreams(type: type, id: streamId, authKey: authKey)
+                    // errors không rỗng CHỈ nghĩa là vài addon lỗi — phần còn lại vẫn dùng được.
+                    if let errors = response.errors, !errors.isEmpty {
+                        print("[bLoop] \(errors.count) addon lỗi, vẫn dùng các nguồn còn lại")
+                    }
+
+                    var options: [StremioStreamOption] = []
+                    var subs: [StremioStream] = []
+                    for bloopStream in response.streams {
+                        guard let playURL = BLoopServerAPI.shared.playURL(sid: bloopStream.sid, authKey: authKey) else { continue }
+                        let asStremioStream = StremioStream(
+                            url: playURL.absoluteString,
+                            title: bloopStream.displayLabel,
+                            name: bloopStream.addonName,
+                            subtitles: nil
+                        )
+                        if bloopStream.isSubtitleStream {
+                            // Không bao giờ tự phát file phụ đề — tách sang danh sách phụ đề.
+                            subs.append(asStremioStream)
+                        } else {
+                            options.append(StremioStreamOption(addonBase: BLoopServerAPI.shared.baseURL, stream: asStremioStream, bloop: bloopStream))
+                        }
+                    }
+
+                    await MainActor.run {
+                        guard streamFetchToken == token else { return }
+                        print("[bLoop] \(options.count) nguồn phát, \(subs.count) phụ đề cho \(streamId)")
+                        // Chèn đầu danh sách để bLoop luôn đứng trước nguồn Stremio.
+                        streamOptions.insert(contentsOf: options, at: 0)
+                        extraSubtitleStreams.append(contentsOf: subs)
+                        if !options.isEmpty { isLoadingStreams = false }
+                    }
+                } catch {
+                    let message = (error as? BLoopServerError)?.userMessage ?? "Không lấy được nguồn từ bLoopServer."
+                    print("[bLoop] lỗi lấy /streams: \(message)")
+                    await MainActor.run {
+                        guard streamFetchToken == token else { return }
+                        // Chỉ ghi chú, KHÔNG chặn nguồn Stremio bên dưới.
+                        bloopNotice = message
+                    }
+                }
+            }
+        }
 
         Task {
             // Hỏi tất cả addon SONG SONG, không chờ nhau. Addon nào trả về trước thì gom nguồn của nó vào
@@ -652,6 +742,31 @@ struct StremioMovieDetailView: View {
     }
 
     private func play(with option: StremioStreamOption) {
+        // Nguồn bLoopServer: kiểm tra sid còn sống không TRƯỚC khi giao cho player, để bắt 410 (file đã bị
+        // đổi tên/gỡ khỏi Drive) mà tự tải lại danh sách, thay vì để player chết với lỗi khó hiểu.
+        guard let bloop = option.bloop, let authKey = StremioAccountAPI.shared.authKey else {
+            startPlayback(with: option)
+            return
+        }
+
+        Task {
+            do {
+                try await BLoopServerAPI.shared.preflight(sid: bloop.sid, authKey: authKey)
+                await MainActor.run { startPlayback(with: option) }
+            } catch {
+                let bloopError = (error as? BLoopServerError) ?? .transport
+                await MainActor.run {
+                    errorMessage = bloopError.userMessage
+                    // 410/400: sid hỏng → tự lấy danh sách mới rồi mời chọn lại.
+                    if bloopError.needsStreamRefresh {
+                        fetchStreamOptions(for: resolvedStreamId)
+                    }
+                }
+            }
+        }
+    }
+
+    private func startPlayback(with option: StremioStreamOption) {
         print("[Stremio] Chọn nguồn: \(option.label)")
 
         // Gộp sub rời tìm thấy riêng trong /stream (không nằm trong "subtitles" của bản được chọn) vào chung.
